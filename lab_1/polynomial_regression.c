@@ -17,7 +17,9 @@
 #define CIMGUI_USE_OPENGL3
 #define CIMGUI_USE_GLFW
 #include "thirdparty/cimgui/cimgui.h"
+#include "thirdparty/cimplot/cimplot.h"
 #include "thirdparty/cimgui/cimgui_impl.h"
+
 
 #define ASSERT(expr, ...) \
     do {\
@@ -210,6 +212,7 @@ static GLFWwindow* my_glfw_init(void) {
     GLFWwindow* const glfw_window = glfwCreateWindow(1280, 720, "demo", NULL, NULL);
     ASSERT(glfw_window);
     glfwMakeContextCurrent(glfw_window);
+    glfwSwapInterval(0);
     ASSERT(gladLoadGLLoader((GLADloadproc)glfwGetProcAddress));
     ASSERT(gladLoadEGLLoader((GLADloadproc)glfwGetProcAddress));
     
@@ -257,13 +260,74 @@ static GLFWwindow* my_glfw_init(void) {
 
 int main(void) {
     GLFWwindow* const glfw_window = my_glfw_init();
+    ImGuiContext *const ig_context = igCreateContext(NULL);
+    ImPlotContext *const implot_context = ImPlot_CreateContext();
+    ImGuiIO *const ig_io = igGetIO_Nil();
+    ig_io->IniFilename = NULL;
+    ig_io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    ig_io->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    ig_io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    ImGuiStyle *const ig_style = igGetStyle();
+    igStyleColorsDark(ig_style);
+    ImGui_ImplGlfw_InitForOpenGL(glfw_window, true);
+    ImGui_ImplOpenGL3_Init("#version 460");
     
     while(!glfwWindowShouldClose(glfw_window)) {
         glfwPollEvents();
-        ASSERT_GL(glClearColor(0, 1, 0, 1));
+        ASSERT_GL(glClearColor(0, 0, 0, 1));
         ASSERT_GL(glClear(GL_COLOR_BUFFER_BIT));
+
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        igNewFrame();
+
+        // {
+        //     ImGuiViewport* const ig_viewport = igGetWindowViewport();
+        //     igSetNextWindowPos((ImVec2){0}, ImGuiCond_FirstUseEver, (ImVec2){0});
+        //     igSetNextWindowSize(ig_viewport->WorkSize, ImGuiCond_Always);
+        // }
+        // if(igBegin("demo", NULL, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove)) {
+        //
+        // }
+        // igEnd();
+
+
+            ImS64   bar_data[11];
+            for(int i = 0; i < 11; i++) {
+                bar_data[i] = i;
+            }
+
+            ImVec2 plot_size;
+            plot_size.x = 500;
+            plot_size.y = 300;
+            
+            igBegin("My Window", NULL, 0);
+            
+            if(ImPlot_BeginPlot("My Plot",plot_size,0)) {
+                ImPlot_PlotBars_S64PtrInt("My Bar Plot", bar_data, 11,0.67,0,0,0,sizeof(ImS64));
+                ImPlot_EndPlot();
+            }
+            
+            //igText("Test");
+            //igButton("Test",(struct ImVec2){200,50});
+
+            igEnd();
+
+
+        static bool showdemowindow = true;
+        igShowDemoWindow(&showdemowindow);
+
+
+
+        igRender();
+        ImGui_ImplOpenGL3_RenderDrawData(igGetDrawData());
         glfwSwapBuffers(glfw_window);
     }
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImPlot_DestroyContext(implot_context);
+    igDestroyContext(ig_context);
 
     glfwTerminate();
     return 0;

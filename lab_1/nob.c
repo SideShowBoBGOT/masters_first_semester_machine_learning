@@ -104,6 +104,7 @@ int main(int argc, char** argv) {
         nob_cmd_append(&cmd, "-lglfw");
         nob_cmd_append(&cmd, "-lEGL");
         nob_cmd_append(&cmd, "-lm");
+        nob_cmd_append(&cmd, "-lstdc++");
         nob_cmd_append(&cmd, "-Wno-address-of-packed-member");
         nob_cmd_append(&cmd, "-Wno-format-nonliteral");
         nob_cmd_append(&cmd, "-Wno-unused-parameter");
