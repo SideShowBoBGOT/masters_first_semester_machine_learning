@@ -53,7 +53,13 @@ int main(int argc, char** argv) {
          my_nob_comp_if_needs(BUILD_FOLDER "imgui.o", "thirdparty/cimgui/imgui/imgui.cpp", COMPILATION_ARGS);
          my_nob_comp_if_needs(BUILD_FOLDER "imgui_impl_glfw.o", "thirdparty/cimgui/imgui/imgui_impl_glfw.cpp", COMPILATION_ARGS);
          my_nob_comp_if_needs(BUILD_FOLDER "imgui_impl_opengl3.o", "thirdparty/cimgui/imgui/imgui_impl_opengl3.cpp", COMPILATION_ARGS);
-    #undef COMPILATION_ARGS
+
+    #define COMPILATION_ARGS_IMPLOT "-O3", "-fno-exceptions", "-fno-rtti", "-std=c++11", "-DIMGUI_IMPL_API=extern \"C\""
+         my_nob_comp_if_needs(BUILD_FOLDER "cimplot.o", "thirdparty/cimplot/cimplot.cpp", COMPILATION_ARGS_IMPLOT);
+         my_nob_comp_if_needs(BUILD_FOLDER "implot.o", "thirdparty/cimplot/implot/implot.cpp", COMPILATION_ARGS_IMPLOT);
+         my_nob_comp_if_needs(BUILD_FOLDER "implot_demo.o", "thirdparty/cimplot/implot/implot_demo.cpp", COMPILATION_ARGS_IMPLOT);
+         my_nob_comp_if_needs(BUILD_FOLDER "implot_items.o", "thirdparty/cimplot/implot/implot_items.cpp", COMPILATION_ARGS_IMPLOT);
+    #undef COMPILATION_ARGS_IMPLOT
     
     return 0;
 }
