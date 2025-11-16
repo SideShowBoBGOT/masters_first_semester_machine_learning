@@ -1,8 +1,8 @@
-#include "imgui.h"
+#include "./imgui/imgui.h"
 #ifdef IMGUI_ENABLE_FREETYPE
 #include "./imgui/misc/freetype/imgui_freetype.h"
 #endif
-#include "imgui_internal.h"
+#include "./imgui/imgui_internal.h"
 #include "cimgui.h"
 
 

@@ -16,13 +16,7 @@ int main(int argc, char **argv)
 
     // Let's execute the command.
     if (!nob_cmd_run(&cmd)) return 1;
-    // nob_cmd_run() automatically resets the cmd array, so you can nob_cmd_append() more strings
-    // into it.
-
-    // nob.h ships with a bunch of nob_cc_* macros that try abstract away the specific compiler.
-    // They are verify basic and not particularly flexible, but you can redefine them if you need to
-    // or not use them at all and create your own abstraction on top of Nob_Cmd.
-    
+        
     // CIMGUI_FLAGS:=-O3 -fno-exceptions -fno-rtti -std=c++11 -I$(CIMGUI_IMGUI_DIR) -I$(CIMGUI_IMGUI_DIR)/backends -DIMGUI_IMPL_API="extern \"C\""
 
     nob_cc(&cmd);
