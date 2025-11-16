@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include "glad/glad.h"
-#include "glad/glad_egl.h"
+#include "thirdparty/glad/glad.h"
+#include "thirdparty/glad/glad_egl.h"
 
 #include <EGL/egl.h>
 #define EGL_EGLEXT_PROTOTYPES
@@ -16,8 +16,8 @@
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 #define CIMGUI_USE_OPENGL3
 #define CIMGUI_USE_GLFW
-#include "cimgui/cimgui.h"
-#include "cimgui/cimgui_impl.h"
+#include "thirdparty/cimgui/cimgui.h"
+#include "thirdparty/cimgui/cimgui_impl.h"
 
 #define ASSERT(expr, ...) \
     do {\
