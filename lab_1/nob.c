@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "glad_egl.o", "thirdparty/glad/glad_egl.c", COMPILATION_ARGS);
     #undef COMPILATION_ARGS
 
-    #define COMPILATION_ARGS "-c", "-O3", "-fno-exceptions", "-fno-rtti", "-std=c++11", "-nostdlib++", "-DIMGUI_IMPL_API=extern \"C\""
+    #define COMPILATION_ARGS "-c", "-O3", "-fno-exceptions", "-fno-rtti", "-std=c++11", "-DIMGUI_IMPL_API=extern \"C\""
          my_nob_comp_if_needs(&string_da, BUILD_FOLDER "cimgui.o", "thirdparty/cimgui/cimgui.cpp", COMPILATION_ARGS);
          my_nob_comp_if_needs(&string_da, BUILD_FOLDER "cimgui_impl.o", "thirdparty/cimgui/cimgui_impl.cpp", COMPILATION_ARGS);
          my_nob_comp_if_needs(&string_da, BUILD_FOLDER "imgui_widgets.o", "thirdparty/cimgui/imgui/imgui_widgets.cpp", COMPILATION_ARGS);
