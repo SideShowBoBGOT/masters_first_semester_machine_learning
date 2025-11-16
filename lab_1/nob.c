@@ -41,14 +41,19 @@ int main(int argc, char** argv) {
     if(!nob_mkdir_if_not_exists(BUILD_FOLDER)) return 1;
 
     my_nob_comp_if_needs(BUILD_FOLDER "glad.o", "thirdparty/glad/glad.c", "-Weverything", "-O3");
-    my_nob_comp_if_needs(BUILD_FOLDER "glad.o", "thirdparty/glad/glad_egl.c", "-Weverything", "-O3");
+    my_nob_comp_if_needs(BUILD_FOLDER "glad_egl.o", "thirdparty/glad/glad_egl.c", "-Weverything", "-O3");
+
+    #define COMPILATION_ARGS "-O3", "-fno-exceptions", "-fno-rtti", "-std=c++11", "-DIMGUI_IMPL_API=extern \"C\""
+         my_nob_comp_if_needs(BUILD_FOLDER "cimgui.o", "thirdparty/cimgui/cimgui.cpp", COMPILATION_ARGS);
+         my_nob_comp_if_needs(BUILD_FOLDER "cimgui_impl.o", "thirdparty/cimgui/cimgui_impl.cpp", COMPILATION_ARGS);
+         my_nob_comp_if_needs(BUILD_FOLDER "imgui_widgets.o", "thirdparty/cimgui/imgui/imgui_widgets.cpp", COMPILATION_ARGS);
+         my_nob_comp_if_needs(BUILD_FOLDER "imgui_tables.o", "thirdparty/cimgui/imgui/imgui_tables.cpp", COMPILATION_ARGS);
+         my_nob_comp_if_needs(BUILD_FOLDER "imgui_draw.o", "thirdparty/cimgui/imgui/imgui_draw.cpp", COMPILATION_ARGS);
+         my_nob_comp_if_needs(BUILD_FOLDER "imgui_demo.o", "thirdparty/cimgui/imgui/imgui_demo.cpp", COMPILATION_ARGS);
+         my_nob_comp_if_needs(BUILD_FOLDER "imgui.o", "thirdparty/cimgui/imgui/imgui.cpp", COMPILATION_ARGS);
+         my_nob_comp_if_needs(BUILD_FOLDER "imgui_impl_glfw.o", "thirdparty/cimgui/imgui/imgui_impl_glfw.cpp", COMPILATION_ARGS);
+         my_nob_comp_if_needs(BUILD_FOLDER "imgui_impl_opengl3.o", "thirdparty/cimgui/imgui/imgui_impl_opengl3.cpp", COMPILATION_ARGS);
+    #undef COMPILATION_ARGS
     
-    // my_nob_comp_if_needs(BUILD_FOLDER "cimgui.o", "thirdparty/cimgui/cimgui.cpp", "-O3", "-fno-exceptions", "-fno-rtti", "-std=c++11", "-I", "thirdparty/cimgui/imgui/", "-I", "thirdparty/cimgui/imgui/backends/", "-DIMGUI_IMPL_API=extern \"C\"");
-    // my_nob_comp_if_needs(BUILD_FOLDER "cimgui_impl.o", "thirdparty/cimgui/cimgui_impl.cpp", "-O3", "-fno-exceptions", "-fno-rtti", "-std=c++11", "-I", "thirdparty/cimgui/imgui/", "-I", "thirdparty/cimgui/imgui/backends/", "-DIMGUI_IMPL_API=extern \"C\"");
-    // my_nob_comp_if_needs(BUILD_FOLDER "imgui_impl_glfw.o", "thirdparty/cimgui/imgui/backends/imgui_impl_glfw.cpp", "-O3", "-fno-exceptions", "-fno-rtti", "-std=c++11", "-I", "thirdparty/cimgui/imgui/", "-I", "thirdparty/cimgui/imgui/backends/", "-DIMGUI_IMPL_API=extern \"C\"");
-    // my_nob_comp_if_needs(BUILD_FOLDER "imgui_impl_opengl3.o", "thirdparty/cimgui/imgui/backends/imgui_impl_opengl3.cpp", "-O3", "-fno-exceptions", "-fno-rtti", "-std=c++11", "-I", "thirdparty/cimgui/imgui/", "-I", "thirdparty/cimgui/imgui/backends/", "-DIMGUI_IMPL_API=extern \"C\"");
-    //
-    // my_nob_comp_if_needs(BUILD_FOLDER "cimplot.o", "thirdparty/cimplot/cimplot.cpp", "-O3", "-fno-exceptions", "-fno-rtti", "-std=c++11", "-I", "thirdparty/cimgui/", "-I", "thirdparty/cimgui/imgui/", "-I", "thirdparty/cimplot/implot/");
-    // my_nob_comp_if_needs(BUILD_FOLDER "implot.o", "thirdparty/cimplot/implot/implot.cpp", "-O3", "-fno-exceptions", "-fno-rtti", "-std=c++11", "-I", "thirdparty/cimgui/", "-I", "thirdparty/cimgui/imgui/", "-I", "thirdparty/cimplot/implot/");
     return 0;
 }
