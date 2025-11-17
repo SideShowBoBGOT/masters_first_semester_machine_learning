@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <math.h>
 
 #include "thirdparty/glad/glad.h"
 #include "thirdparty/glad/glad_egl.h"
@@ -44,8 +43,6 @@
 
 #define _STRINGIFY(...) #__VA_ARGS__
 #define S(...)          _STRINGIFY(__VA_ARGS__)
-
-#define my_array_count(a) (sizeof(a) / sizeof(a[0]))
 
 static void my_gl_clear_errors(void) {
     while(glGetError() != GL_NO_ERROR) {}
@@ -259,64 +256,9 @@ static GLFWwindow* my_glfw_init(void) {
     return glfw_window;
 }
 
-typedef struct {
-    uint8_t *items;
-    size_t count;
-    size_t capacity;
-} MyArena;
-
-#define my_arena_reset(a) (a)->count = 0
-
-static MyArena my_arena_init(const size_t bytes_count) {
-    MyArena arena = {.capacity = bytes_count, .items = (uint8_t*)malloc(bytes_count)};
-    ASSERT(arena.items);
-    return arena;
-}
-
-static void* my_arena_alloc(MyArena *const arena, const size_t bytes_count) {
-    ASSERT(arena->count + bytes_count <= arena->capacity);
-    void *const result = &arena->items[arena->count];
-    arena->count += bytes_count;
-    return result;
-} 
-
-typedef struct {
-    size_t rows;
-    size_t cols;
-    GLfloat *items;
-} MyMat;
-
-static MyMat my_mat_alloc(MyArena *const arena, const size_t rows, const size_t cols) {
-    MyMat m = {.rows = rows, .cols = cols};
-    m.items = (GLfloat*)my_arena_alloc(arena, sizeof(*m.items) * rows * cols);
-    return m;
-}
-
-#define my_mat_item(m, r, c) ((m)->items[r * (m)->cols + c])
-#define my_range_for(type, name, min, max) for(type name = (min); name < (max); ++name)
-#define my_range_for_zero(type, name, max) for(type name = (type)0; name < (max); ++name)
-#define my_mat_items_count(mat) ((mat)->rows * (mat)->cols)
-#define my_mat_bytes_count(mat) ((mat)->rows * (mat)->cols * sizeof(*(mat)->items))
-#define my_mat_foreach(name, mat) my_range_for(GLfloat*, name, (mat)->items, ((mat)->items + my_mat_items_count((mat)))) 
-
-static void my_mat_mul(MyMat *const result, const MyMat *const first, const MyMat *const second) { ASSERT(first->cols == second->rows); ASSERT(first->rows == result->rows);
-    ASSERT(first->cols == second->rows);
-    ASSERT(first->rows == result->rows);
-    ASSERT(second->cols == result->cols);
-    my_range_for_zero(size_t, first_row_index, first->rows) {
-        my_range_for_zero(size_t, second_col_index, second->cols) {
-            GLfloat sum = 0.f;
-            my_range_for_zero(size_t, first_col_index, first->cols) {
-                sum += my_mat_item(first, first_row_index, first_col_index) * my_mat_item(second, first_col_index, second_col_index);
-            }
-            my_mat_item(result, first_row_index, second_col_index) = sum;
-        }
-    }
-}
-
 #define SHADER_VERSION_STRING "#version 460\n"
 
-static const char mygl_matrix_mul_compute_shader[] = SHADER_VERSION_STRING S(
+static const char matrix_mul_compute_shader[] = SHADER_VERSION_STRING S(
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 
 uniform uint m;
@@ -390,104 +332,71 @@ void main() {
 );
 
 typedef struct {
+    uint8_t *items;
+    size_t count;
+    size_t capacity;
+} MyArena;
+
+#define my_arena_reset(a) (a)->count = 0
+
+static MyArena my_arena_init(const size_t bytes_count) {
+    MyArena arena = {.capacity = bytes_count, .items = (uint8_t*)malloc(bytes_count)};
+    ASSERT(arena.items);
+    return arena;
+}
+
+static void* my_arena_alloc(MyArena *const arena, const size_t bytes_count) {
+    ASSERT(arena->count + bytes_count <= arena->capacity);
+    void *const result = &arena->items[arena->count];
+    arena->count += bytes_count;
+    return result;
+} 
+
+typedef struct {
     size_t rows;
     size_t cols;
-    GLuint ssb;
-} MyGLMat;
+    GLfloat *items;
+} MyMat;
 
-static inline GLint mygl_get_uniform_location(const GLuint shader_program, const char uniform_location_name[]) {
-    GLint value;
-    ASSERT_GL(value = glGetUniformLocation(shader_program, uniform_location_name));
-    ASSERT(value != -1);
-    return value;
+static MyMat my_mat_alloc(MyArena *const arena, const size_t rows, const size_t cols) {
+    MyMat m = {.rows = rows, .cols = cols};
+    m.items = my_arena_alloc(arena, sizeof(*m.items) * rows * cols);
+    return m;
 }
 
-static void mygl_mul(GLuint shader_program, const MyGLMat *const first, const MyGLMat *const second, const MyGLMat *const result) {
-    ASSERT(first->cols == second->rows);
-    ASSERT(first->rows == result->rows);
-    ASSERT(second->cols == result->cols);
+#define my_mat_row_ptr()
+#define my_mat_item(m, r, c) ((m)->items[r * (m)->cols + c])
 
-    ASSERT_GL(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, first->ssb));
-    ASSERT_GL(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, second->ssb));
-    ASSERT_GL(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, result->ssb));
-    ASSERT_GL(glUseProgram(shader_program));
+static void mult_matrixes(void) {
+    MyArena arena = my_arena_init(1024 * 1024);
 
-        const GLuint BLOCK_SIZE = 32;
-        const GLuint wsize[3] = {BLOCK_SIZE, BLOCK_SIZE, 1};
-        const GLuint gsize[3] = {64, 64, 1};
-        
-        const GLuint wcnt_x = (second->cols + wsize[0] - 1) / wsize[0];
-        const GLuint wcnt_y = (first->rows + wsize[1] - 1) / wsize[1];
-        
-        const GLuint gcnt_x = (wcnt_x + gsize[0] - 1) / gsize[0];
-        const GLuint gcnt_y = (wcnt_y + gsize[1] - 1) / gsize[1];
-        
-        const GLuint nelem_x = wsize[0] * gsize[0];
-        const GLuint nelem_y = wsize[1] * gsize[1];
+    const size_t rows = 40;
+    const size_t cols = 30;
 
-        ASSERT_GL(glUniform1ui(mygl_get_uniform_location(shader_program, "m"), first->rows));
-        ASSERT_GL(glUniform1ui(mygl_get_uniform_location(shader_program, "n"), first->cols));
-        ASSERT_GL(glUniform1ui(mygl_get_uniform_location(shader_program, "l"), second->cols));
-
-        for(GLuint yi = 0; yi < gcnt_y; yi++) {
-            GLuint y0 = nelem_y * yi;
-            for(GLuint xi = 0; xi < gcnt_x; xi++) {
-                GLuint x0 = nelem_x * xi;
-                ASSERT_GL(glUniform1ui(mygl_get_uniform_location(shader_program, "x0"), x0));
-                ASSERT_GL(glUniform1ui(mygl_get_uniform_location(shader_program, "y0"), y0));
-                ASSERT_GL(glDispatchCompute(gsize[0], gsize[1], 1));
-            }
-        }
-    ASSERT_GL(glUseProgram(0));
-    ASSERT_GL(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0));
-    ASSERT_GL(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0));
-    ASSERT_GL(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0));
-}
-
-static void my_mult_matrixes(void) {
-    MyArena arena = my_arena_init(1024 * 1024 * 500);
-
-    MyMat first_mat = my_mat_alloc(&arena, 2000, 3000);
+    MyMat first_mat = my_mat_alloc(&arena, rows, cols);
     MyMat second_mat = my_mat_alloc(&arena, first_mat.cols, first_mat.rows);
-    MyMat third_mat = my_mat_alloc(&arena, first_mat.rows, second_mat.cols);
-    my_mat_foreach(el, &first_mat) {
-        *el = rand() % 1000;
+    for(size_t i = 0; i < first_mat.rows; ++i) {
+        for(size_t j = 0; j < first_mat.cols; ++j) {
+            my_mat_item(&first_mat, i, j) = rand() % 1000;
+        }
     }
-    my_mat_foreach(el, &second_mat) {
-        *el = rand() % 1000;
+    for(size_t i = 0; i < second_mat.rows; ++i) {
+        for(size_t j = 0; j < second_mat.cols; ++j) {
+            my_mat_item(&second_mat, i, j) = rand() % 1000;
+        }
     }
-    my_mat_foreach(el, &third_mat) {
-        *el = NAN;
-    }
-
-    MyGLMat first_mat_gl = {.rows = first_mat.rows, .cols = first_mat.cols};
-    MyGLMat second_mat_gl = {.rows = second_mat.rows, .cols = second_mat.cols};
-    MyGLMat third_mat_gl = {.rows = third_mat.rows, .cols = third_mat.cols};
 
     GLuint buffers[3];
     ASSERT_GL(glGenBuffers(3, buffers));
-    first_mat_gl.ssb = buffers[0];
-    second_mat_gl.ssb = buffers[1];
-    third_mat_gl.ssb = buffers[2];
 
     ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[0]));
-        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(&first_mat), first_mat.items, GL_DYNAMIC_DRAW));
+        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, rows * cols * sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW));
     ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
 
-    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[1]));
-        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(&second_mat), second_mat.items, GL_DYNAMIC_DRAW));
+    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[0]));
+        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, rows * cols * sizeof(GLfloat), NULL, GL_DYNAMIC_DRAW));
     ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
 
-    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[2]));
-        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(&third_mat), third_mat.items, GL_DYNAMIC_DRAW));
-    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
-
-    GLuint shader_program, compute_shader;
-    mygl_create_compute_shader_program(&shader_program, &compute_shader, mygl_matrix_mul_compute_shader);
-
-    mygl_mul(shader_program, &first_mat_gl, &second_mat_gl, &third_mat_gl);
-
-    ASSERT_GL(glDeleteBuffers(my_array_count(buffers), buffers));
     free(arena.items);
 }
 
@@ -507,7 +416,7 @@ int main(void) {
     ImGui_ImplOpenGL3_Init("#version 460");
 
 
-    my_mult_matrixes();
+
 
     
     while(!glfwWindowShouldClose(glfw_window)) {
