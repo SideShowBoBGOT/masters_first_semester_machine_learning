@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <string.h>
 
 #include "thirdparty/glad/glad.h"
 #include "thirdparty/glad/glad_egl.h"
@@ -21,19 +22,8 @@
 #include "thirdparty/cimplot/cimplot.h"
 #include "thirdparty/cimgui/cimgui_impl.h"
 
-
-#define ASSERT(expr, ...) \
-    do {\
-        if(!(expr)) {\
-            fprintf(stderr, "%s:%d: %s: Assertion `%s' failed", __FILE__, __LINE__, __FUNCTION__, #expr);\
-            __VA_OPT__(fprintf(stderr, " explanation: " __VA_ARGS__);)\
-            fprintf(stderr, "\n");\
-            abort();\
-        }\
-    } while(0)
-
+#define ASSERT(expr, ...) ((expr) ? (void)0 : (fprintf(stderr, "%s:%d: %s: Assertion `%s' failed", __FILE__, __LINE__, __FUNCTION__, #expr) __VA_OPT__(,) __VA_OPT__(fprintf(stderr, " explanation: " __VA_ARGS__)), fprintf(stderr, "\n"), abort()))
 #define ASSERT_NOT_MINUS_ONE(expr, ...) ASSERT((expr) != -1 __VA_OPT__(,) __VA_ARGS__)
-
 
 #define LOG(...) \
     do {\
@@ -202,9 +192,10 @@ __attribute__((noreturn)) static void my_glfw_error_callback(const int error, co
     abort();
 }
 
-static GLFWwindow* my_glfw_init(void) {
+static GLFWwindow* my_glfw_init(const bool visible) {
     glfwSetErrorCallback(my_glfw_error_callback);
     ASSERT(glfwInit());
+    glfwWindowHint(GLFW_VISIBLE, visible ? GLFW_TRUE : GLFW_FALSE);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
@@ -445,71 +436,15 @@ static void mygl_mul(GLuint shader_program, const MyGLMat *const first, const My
     ASSERT_GL(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0));
 }
 
-static void my_mult_matrixes(void) {
-    MyArena arena = my_arena_init(1024 * 1024 * 500);
+static void polynomial_train(void) {
+    GLFWwindow* const glfw_window = my_glfw_init(false);
 
-    MyMat first_mat = my_mat_alloc(&arena, 913, 734);
-    MyMat second_mat = my_mat_alloc(&arena, first_mat.cols, first_mat.rows);
-    MyMat third_mat = my_mat_alloc(&arena, first_mat.rows, second_mat.cols);
-    my_mat_foreach(el, &first_mat) {
-        *el = rand() % 1000;
-    }
-    my_mat_foreach(el, &second_mat) {
-        *el = rand() % 1000;
-    }
-    my_mat_foreach(el, &third_mat) {
-        *el = NAN;
-    }
 
-    MyGLMat first_mat_gl = {.rows = (GLuint)first_mat.rows, .cols = (GLuint)first_mat.cols};
-    MyGLMat second_mat_gl = {.rows = (GLuint)second_mat.rows, .cols = (GLuint)second_mat.cols};
-    MyGLMat third_mat_gl = {.rows = (GLuint)third_mat.rows, .cols = (GLuint)third_mat.cols};
-
-    GLuint buffers[3];
-    ASSERT_GL(glGenBuffers(3, buffers));
-    first_mat_gl.ssb = buffers[0];
-    second_mat_gl.ssb = buffers[1];
-    third_mat_gl.ssb = buffers[2];
-
-    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[0]));
-        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(&first_mat), first_mat.items, GL_DYNAMIC_DRAW));
-    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
-
-    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[1]));
-        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(&second_mat), second_mat.items, GL_DYNAMIC_DRAW));
-    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
-
-    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[2]));
-        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(&third_mat), third_mat.items, GL_DYNAMIC_DRAW));
-    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
-
-    GLuint shader_program, compute_shader;
-    mygl_create_compute_shader_program(&shader_program, &compute_shader, mygl_matrix_mul_compute_shader);
-
-    mygl_mul(shader_program, &first_mat_gl, &second_mat_gl, &third_mat_gl);
-    my_mat_mul(&third_mat, &first_mat, &second_mat);
-
-    {
-        ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, third_mat_gl.ssb));
-            GLfloat *data; 
-            ASSERT_GL(data = (GLfloat*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, (GLsizeiptr)my_mat_bytes_count(&third_mat), GL_MAP_READ_BIT));
-            my_range_for_zero(size_t, i, my_mat_items_count(&third_mat)) {
-                // LOG("opengl: %lf, cpu: %lf", (double)data[i], (double)third_mat.items[i]);
-                ASSERT(fabsf(data[i] - third_mat.items[i]) < 0.0001f);
-            }
-            ASSERT_GL(glUnmapBuffer(GL_SHADER_STORAGE_BUFFER));
-
-        ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
-    } 
-    
-    ASSERT_GL(glDeleteShader(compute_shader));
-    ASSERT_GL(glDeleteProgram(shader_program));
-    ASSERT_GL(glDeleteBuffers(my_array_count(buffers), buffers));
-    free(arena.items);
+    glfwTerminate();
 }
 
-int main(void) {
-    GLFWwindow* const glfw_window = my_glfw_init();
+static void window_demo(void) {
+    GLFWwindow* const glfw_window = my_glfw_init(true);
     ImGuiContext *const ig_context = igCreateContext(NULL);
     ImPlotContext *const implot_context = ImPlot_CreateContext();
     ImGuiIO *const ig_io = igGetIO_Nil();
@@ -523,10 +458,6 @@ int main(void) {
     ImGui_ImplGlfw_InitForOpenGL(glfw_window, true);
     ImGui_ImplOpenGL3_Init("#version 460");
 
-
-    my_mult_matrixes();
-
-    
     while(!glfwWindowShouldClose(glfw_window)) {
         glfwPollEvents();
         ASSERT_GL(glClearColor(0, 0, 0, 1));
@@ -585,5 +516,86 @@ int main(void) {
     igDestroyContext(ig_context);
 
     glfwTerminate();
+}
+
+static void test_matrix_multiplication(void) {
+    GLFWwindow* const glfw_window = my_glfw_init(false);
+    MyArena arena = my_arena_init(1024 * 1024 * 500);
+
+    MyMat first_mat = my_mat_alloc(&arena, 1713, 1929);
+    MyMat second_mat = my_mat_alloc(&arena, first_mat.cols, first_mat.rows);
+    MyMat third_mat = my_mat_alloc(&arena, first_mat.rows, second_mat.cols);
+    my_mat_foreach(el, &first_mat) {
+        *el = rand() % 100;
+    }
+    my_mat_foreach(el, &second_mat) {
+        *el = rand() % 1000;
+    }
+    my_mat_foreach(el, &third_mat) {
+        *el = NAN;
+    }
+
+    MyGLMat first_mat_gl = {.rows = (GLuint)first_mat.rows, .cols = (GLuint)first_mat.cols};
+    MyGLMat second_mat_gl = {.rows = (GLuint)second_mat.rows, .cols = (GLuint)second_mat.cols};
+    MyGLMat third_mat_gl = {.rows = (GLuint)third_mat.rows, .cols = (GLuint)third_mat.cols};
+
+    GLuint buffers[3];
+    ASSERT_GL(glGenBuffers(3, buffers));
+    first_mat_gl.ssb = buffers[0];
+    second_mat_gl.ssb = buffers[1];
+    third_mat_gl.ssb = buffers[2];
+
+    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[0]));
+        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(&first_mat), first_mat.items, GL_DYNAMIC_DRAW));
+    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
+
+    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[1]));
+        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(&second_mat), second_mat.items, GL_DYNAMIC_DRAW));
+    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
+
+    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[2]));
+        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(&third_mat), third_mat.items, GL_DYNAMIC_DRAW));
+    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
+
+    GLuint shader_program, compute_shader;
+    mygl_create_compute_shader_program(&shader_program, &compute_shader, mygl_matrix_mul_compute_shader);
+
+
+    mygl_mul(shader_program, &first_mat_gl, &second_mat_gl, &third_mat_gl);
+    my_mat_mul(&third_mat, &first_mat, &second_mat);
+
+    {
+        ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, third_mat_gl.ssb));
+            GLfloat *data; 
+            ASSERT_GL(data = (GLfloat*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, (GLsizeiptr)my_mat_bytes_count(&third_mat), GL_MAP_READ_BIT));
+            my_range_for_zero(size_t, i, my_mat_items_count(&third_mat)) {
+                // LOG("opengl: %lf, cpu: %lf", (double)data[i], (double)third_mat.items[i]);
+                ASSERT(fabsf(data[i] - third_mat.items[i]) < 0.0001f);
+            }
+            ASSERT_GL(glUnmapBuffer(GL_SHADER_STORAGE_BUFFER));
+
+        ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
+    } 
+    
+    ASSERT_GL(glDeleteShader(compute_shader));
+    ASSERT_GL(glDeleteProgram(shader_program));
+    ASSERT_GL(glDeleteBuffers(my_array_count(buffers), buffers));
+    free(arena.items);
+
+    glfwTerminate();
+}
+
+#define my_shift(xs, xs_sz) (ASSERT((xs_sz) > 0), (xs_sz)--, *(xs)++)
+
+int main(int argc, const char* const* argv) {
+    my_shift(argv, argc);
+    if(argc == 0) {
+        polynomial_train();
+    } else {
+        ASSERT(argc == 1);
+        const char* const arg = my_shift(argv, argc);
+        ASSERT(strcmp(arg, "test") == 0);
+        test_matrix_multiplication();
+    }
     return 0;
 }

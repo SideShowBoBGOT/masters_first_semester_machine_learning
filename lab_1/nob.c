@@ -2,7 +2,9 @@
 #include "nob.h"
 
 #define BUILD_FOLDER "build/"
+ 
 #define SRC_FOLDER   "src/"
+
 
 #define ARRAY_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
 #define ASSERT(expr, ...) \
