@@ -390,8 +390,8 @@ void main() {
 );
 
 typedef struct {
-    size_t rows;
-    size_t cols;
+    GLuint rows;
+    GLuint cols;
     GLuint ssb;
 } MyGLMat;
 
@@ -438,6 +438,7 @@ static void mygl_mul(GLuint shader_program, const MyGLMat *const first, const My
                 ASSERT_GL(glDispatchCompute(gsize[0], gsize[1], 1));
             }
         }
+
     ASSERT_GL(glUseProgram(0));
     ASSERT_GL(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0));
     ASSERT_GL(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0));
@@ -447,7 +448,7 @@ static void mygl_mul(GLuint shader_program, const MyGLMat *const first, const My
 static void my_mult_matrixes(void) {
     MyArena arena = my_arena_init(1024 * 1024 * 500);
 
-    MyMat first_mat = my_mat_alloc(&arena, 2000, 3000);
+    MyMat first_mat = my_mat_alloc(&arena, 913, 734);
     MyMat second_mat = my_mat_alloc(&arena, first_mat.cols, first_mat.rows);
     MyMat third_mat = my_mat_alloc(&arena, first_mat.rows, second_mat.cols);
     my_mat_foreach(el, &first_mat) {
@@ -460,9 +461,9 @@ static void my_mult_matrixes(void) {
         *el = NAN;
     }
 
-    MyGLMat first_mat_gl = {.rows = first_mat.rows, .cols = first_mat.cols};
-    MyGLMat second_mat_gl = {.rows = second_mat.rows, .cols = second_mat.cols};
-    MyGLMat third_mat_gl = {.rows = third_mat.rows, .cols = third_mat.cols};
+    MyGLMat first_mat_gl = {.rows = (GLuint)first_mat.rows, .cols = (GLuint)first_mat.cols};
+    MyGLMat second_mat_gl = {.rows = (GLuint)second_mat.rows, .cols = (GLuint)second_mat.cols};
+    MyGLMat third_mat_gl = {.rows = (GLuint)third_mat.rows, .cols = (GLuint)third_mat.cols};
 
     GLuint buffers[3];
     ASSERT_GL(glGenBuffers(3, buffers));
@@ -486,7 +487,23 @@ static void my_mult_matrixes(void) {
     mygl_create_compute_shader_program(&shader_program, &compute_shader, mygl_matrix_mul_compute_shader);
 
     mygl_mul(shader_program, &first_mat_gl, &second_mat_gl, &third_mat_gl);
+    my_mat_mul(&third_mat, &first_mat, &second_mat);
 
+    {
+        ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, third_mat_gl.ssb));
+            GLfloat *data; 
+            ASSERT_GL(data = (GLfloat*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, (GLsizeiptr)my_mat_bytes_count(&third_mat), GL_MAP_READ_BIT));
+            my_range_for_zero(size_t, i, my_mat_items_count(&third_mat)) {
+                // LOG("opengl: %lf, cpu: %lf", (double)data[i], (double)third_mat.items[i]);
+                ASSERT(fabsf(data[i] - third_mat.items[i]) < 0.0001f);
+            }
+            ASSERT_GL(glUnmapBuffer(GL_SHADER_STORAGE_BUFFER));
+
+        ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
+    } 
+    
+    ASSERT_GL(glDeleteShader(compute_shader));
+    ASSERT_GL(glDeleteProgram(shader_program));
     ASSERT_GL(glDeleteBuffers(my_array_count(buffers), buffers));
     free(arena.items);
 }
