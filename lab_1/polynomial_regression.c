@@ -469,11 +469,15 @@ static void my_read_bin_data_to_mat(MyMat *const mat, MyArena *const arena, cons
     struct stat stat;
     ASSERT_NOT_MINUS_ONE(fstat(fd, &stat));
     ASSERT((size_t)stat.st_size == my_mat_bytes_count(mat));
-    GLfloat *const data = (GLfloat*)mmap(NULL, my_mat_bytes_count(mat), PROT_READ, MAP_SHARED, -1, 0);
+    GLfloat *const data = (GLfloat*)mmap(NULL, my_mat_bytes_count(mat), PROT_READ, MAP_SHARED, fd, 0);
     ASSERT(data != MAP_FAILED);
     memcpy(mat->items, data, my_mat_bytes_count(mat));
     ASSERT_NOT_MINUS_ONE(munmap(data, my_mat_bytes_count(mat)));
     ASSERT_NOT_MINUS_ONE(close(fd));
+}
+
+static void my_polynomial_features_create(void) {
+
 }
 
 static void my_polynomial_train(void) {
@@ -489,7 +493,6 @@ static void my_polynomial_train(void) {
         + my_mat_bytes_count(&y_train)
         + my_mat_bytes_count(&x_test)
         + my_mat_bytes_count(&y_test)
-        + 1024 * 1024 * 300
     );
     #define LOCAL_MACRO(mat) my_read_bin_data_to_mat(&mat, &my_arena, "data/" #mat ".bin")
         LOCAL_MACRO(x_train);
