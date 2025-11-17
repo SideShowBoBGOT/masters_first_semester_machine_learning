@@ -93,6 +93,7 @@ int main(int argc, char** argv) {
         nob_cmd_append(&cmd, "-std=c11");
         nob_cmd_append(&cmd, "-Werror");
         nob_cmd_append(&cmd, "-Weverything");
+        nob_cmd_append(&cmd, "-Wno-disabled-macro-expansion");
         nob_cmd_append(&cmd, "-Wno-variadic-macro-arguments-omitted");
         nob_cmd_append(&cmd, "-Wno-ms-bitfield-padding");
         nob_cmd_append(&cmd, "-Wno-declaration-after-statement");

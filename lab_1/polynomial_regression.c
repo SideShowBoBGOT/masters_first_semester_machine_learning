@@ -1,4 +1,8 @@
+#include <sys/stat.h>
 #include <stdio.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
@@ -277,18 +281,38 @@ typedef struct {
     GLfloat *items;
 } MyMat;
 
-static MyMat my_mat_alloc(MyArena *const arena, const size_t rows, const size_t cols) {
+#ifdef MY_MAT_ASSERT_ENABLE
+    #define MY_MAT_ASSERT(expr) ASSERT((expr))
+#else
+    #define MY_MAT_ASSERT(expr) (NULL)
+#endif
+
+#define my_mat_item_ptr(m, r, c) (MY_MAT_ASSERT((r) < (m)->rows && (c) < (m)->cols), &(m)->items[r * (m)->cols + c])
+#define my_mat_item(m, r, c) (*my_mat_item_ptr((m), (r), (c)))
+#define my_mat_row(m, r) ((m)->items[r * (m)->cols])
+#define my_range_for(type, name, min, max) for(type name = (min); name < (max); ++name)
+#define my_range_for_zero(type, name, max) for(type name = (type)0; name < (max); ++name)
+#define my_mat_items_count(mat) ((mat)->rows * (mat)->cols)
+#define my_mat_row_bytes_count(mat) ((mat)->cols * sizeof(*(mat)->items))
+#define my_mat_bytes_count(mat) ((mat)->rows * my_mat_row_bytes_count((mat)))
+#define my_mat_foreach(name, mat) my_range_for(GLfloat*, name, (mat)->items, ((mat)->items + my_mat_items_count((mat)))) 
+
+static MyMat my_mat_alloc(MyArena arena[static 1], const size_t rows, const size_t cols) {
     MyMat m = {.rows = rows, .cols = cols};
     m.items = (GLfloat*)my_arena_alloc(arena, sizeof(*m.items) * rows * cols);
     return m;
 }
 
-#define my_mat_item(m, r, c) ((m)->items[r * (m)->cols + c])
-#define my_range_for(type, name, min, max) for(type name = (min); name < (max); ++name)
-#define my_range_for_zero(type, name, max) for(type name = (type)0; name < (max); ++name)
-#define my_mat_items_count(mat) ((mat)->rows * (mat)->cols)
-#define my_mat_bytes_count(mat) ((mat)->rows * (mat)->cols * sizeof(*(mat)->items))
-#define my_mat_foreach(name, mat) my_range_for(GLfloat*, name, (mat)->items, ((mat)->items + my_mat_items_count((mat)))) 
+static MyMat my_mat_hstack(MyArena arena[static 1], const MyMat first[static 1], const MyMat second[static 1]) {
+    ASSERT(first->rows == second->rows);
+    MyMat result = my_mat_alloc(arena, first->rows, first->cols + second->cols);
+    my_range_for_zero(size_t, row, first->rows) {
+        memcpy(&my_mat_row(&result, row), &my_mat_row(first, row), my_mat_row_bytes_count(first));
+        memcpy(&my_mat_item(&result, row, first->cols), &my_mat_row(second, row), my_mat_row_bytes_count(second));
+    }
+    return result;
+}
+
 
 static void my_mat_mul(MyMat *const result, const MyMat *const first, const MyMat *const second) { ASSERT(first->cols == second->rows); ASSERT(first->rows == result->rows);
     ASSERT(first->cols == second->rows);
@@ -436,10 +460,45 @@ static void mygl_mul(GLuint shader_program, const MyGLMat *const first, const My
     ASSERT_GL(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0));
 }
 
-static void polynomial_train(void) {
+static void my_read_bin_data_to_mat(MyMat *const mat, MyArena *const arena, const char *const path) {
+    mat->items = (GLfloat*)my_arena_alloc(arena, my_mat_bytes_count(mat));
+    const int fd = open(path, O_RDONLY);
+    ASSERT_NOT_MINUS_ONE(fd);
+    struct stat stat;
+    ASSERT_NOT_MINUS_ONE(fstat(fd, &stat));
+    ASSERT((size_t)stat.st_size == my_mat_bytes_count(mat));
+    GLfloat *const data = (GLfloat*)mmap(NULL, my_mat_bytes_count(mat), PROT_READ, MAP_SHARED, -1, 0);
+    ASSERT(data != MAP_FAILED);
+    memcpy(mat->items, data, my_mat_bytes_count(mat));
+    ASSERT_NOT_MINUS_ONE(munmap(data, my_mat_bytes_count(mat)));
+    ASSERT_NOT_MINUS_ONE(close(fd));
+}
+
+static void my_polynomial_train(void) {
     GLFWwindow* const glfw_window = my_glfw_init(false);
+    
+    MyMat x_train = {.rows = 20210, .cols = 167};
+    MyMat y_train = {.rows = 20210, .cols = 1};
+    MyMat x_test = {.rows = 1053, .cols = 167};
+    MyMat y_test = {.rows = 1053, .cols = 1};
+
+    MyArena my_arena = my_arena_init(
+        my_mat_bytes_count(&x_train)
+        + my_mat_bytes_count(&y_train)
+        + my_mat_bytes_count(&x_test)
+        + my_mat_bytes_count(&y_test)
+        + 1024 * 1024 * 300
+    );
+    #define LOCAL_MACRO(mat) my_read_bin_data_to_mat(&mat, &my_arena, "data/" #mat ".bin")
+        LOCAL_MACRO(x_train);
+        LOCAL_MACRO(y_train);
+        LOCAL_MACRO(x_test);
+        LOCAL_MACRO(y_test);
+    #undef LOCAL_MACRO
 
 
+
+    free(my_arena.items);
     glfwTerminate();
 }
 
@@ -519,7 +578,7 @@ static void window_demo(void) {
 }
 
 static void test_matrix_multiplication(void) {
-    GLFWwindow* const glfw_window = my_glfw_init(false);
+    my_glfw_init(false);
     MyArena arena = my_arena_init(1024 * 1024 * 500);
 
     MyMat first_mat = my_mat_alloc(&arena, 1713, 1929);
@@ -554,16 +613,23 @@ static void test_matrix_multiplication(void) {
     ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
 
     ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[2]));
-        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(&third_mat), third_mat.items, GL_DYNAMIC_DRAW));
+        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(&third_mat), NULL, GL_DYNAMIC_DRAW));
     ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
 
     GLuint shader_program, compute_shader;
     mygl_create_compute_shader_program(&shader_program, &compute_shader, mygl_matrix_mul_compute_shader);
 
-
-    mygl_mul(shader_program, &first_mat_gl, &second_mat_gl, &third_mat_gl);
-    my_mat_mul(&third_mat, &first_mat, &second_mat);
-
+    clock_t start = clock();
+        mygl_mul(shader_program, &first_mat_gl, &second_mat_gl, &third_mat_gl);
+    clock_t end = clock();
+    const double opengl_elapsed_time = (((double)(end - start)) / CLOCKS_PER_SEC) * 1000;
+    LOG("opengl_elapsed_time ms: %lf", opengl_elapsed_time);
+    start = clock();
+        my_mat_mul(&third_mat, &first_mat, &second_mat);
+    end = clock();
+    const double cpu_elapsed_time = (((double)(end - start)) / CLOCKS_PER_SEC) * 1000;
+    LOG("cpu_elapsed_time ms: %lf", cpu_elapsed_time);
+    LOG("cpu_elapsed_time / opengl_elapsed_time: %lf", cpu_elapsed_time / opengl_elapsed_time);
     {
         ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, third_mat_gl.ssb));
             GLfloat *data; 
@@ -585,17 +651,83 @@ static void test_matrix_multiplication(void) {
     glfwTerminate();
 }
 
+static void test_hstack(void) {
+    MyArena arena = my_arena_init(1024);
+    MyMat first = my_mat_alloc(&arena, 4, 4);
+    MyMat second = my_mat_alloc(&arena, 4, 3);
+
+    my_mat_item(&first, 0, 0) = 1;
+    my_mat_item(&first, 0, 1) = 1;
+    my_mat_item(&first, 0, 2) = 1;
+    my_mat_item(&first, 0, 3) = 1;
+
+    my_mat_item(&first, 1, 0) = 2;
+    my_mat_item(&first, 1, 1) = 2;
+    my_mat_item(&first, 1, 2) = 2;
+    my_mat_item(&first, 1, 3) = 2;
+
+    my_mat_item(&first, 2, 0) = 3;
+    my_mat_item(&first, 2, 1) = 3;
+    my_mat_item(&first, 2, 2) = 3;
+    my_mat_item(&first, 2, 3) = 3;
+
+    my_mat_item(&first, 2, 0) = 4;
+    my_mat_item(&first, 2, 1) = 4;
+    my_mat_item(&first, 2, 2) = 4;
+    my_mat_item(&first, 2, 3) = 4;
+
+    my_mat_item(&second, 0, 0) = 5;
+    my_mat_item(&second, 0, 1) = 5;
+    my_mat_item(&second, 0, 2) = 5;
+
+    my_mat_item(&second, 1, 0) = 6;
+    my_mat_item(&second, 1, 1) = 6;
+    my_mat_item(&second, 1, 2) = 6;
+
+    my_mat_item(&second, 2, 0) = 7;
+    my_mat_item(&second, 2, 1) = 7;
+    my_mat_item(&second, 2, 2) = 7;
+
+    const MyMat result = my_mat_hstack(&arena, &first, &second);
+    #define ASSERT_MAT_VALUE(row, col, expected_value) ASSERT(fabsf(my_mat_item(&result, (row), (col)) - (expected_value)) < 0.0000000001f)
+        ASSERT_MAT_VALUE(0, 0, 1);
+        ASSERT_MAT_VALUE(0, 1, 1);
+        ASSERT_MAT_VALUE(0, 2, 1);
+        ASSERT_MAT_VALUE(0, 3, 1);
+        ASSERT_MAT_VALUE(0, 4, 5);
+        ASSERT_MAT_VALUE(0, 5, 5);
+        ASSERT_MAT_VALUE(0, 6, 5);
+
+        ASSERT_MAT_VALUE(1, 0, 2);
+        ASSERT_MAT_VALUE(1, 1, 2);
+        ASSERT_MAT_VALUE(1, 2, 2);
+        ASSERT_MAT_VALUE(1, 3, 2);
+        ASSERT_MAT_VALUE(1, 4, 6);
+        ASSERT_MAT_VALUE(1, 5, 6);
+        ASSERT_MAT_VALUE(1, 6, 6);
+        ASSERT_MAT_VALUE(1, 8, 6);
+
+
+    #undef ASSERT_MAT_VALUE
+
+    free(arena.items);
+}
+static void test_all(void) {
+    // test_matrix_multiplication();
+    test_hstack();
+}
+
 #define my_shift(xs, xs_sz) (ASSERT((xs_sz) > 0), (xs_sz)--, *(xs)++)
 
 int main(int argc, const char* const* argv) {
     my_shift(argv, argc);
     if(argc == 0) {
-        polynomial_train();
+        my_polynomial_train();
     } else {
         ASSERT(argc == 1);
         const char* const arg = my_shift(argv, argc);
         ASSERT(strcmp(arg, "test") == 0);
-        test_matrix_multiplication();
+        test_all();
     }
     return 0;
 }
