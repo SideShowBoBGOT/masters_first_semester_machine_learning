@@ -258,6 +258,125 @@ static GLFWwindow* my_glfw_init(void) {
 
 #define SHADER_VERSION_STRING "#version 460\n"
 
+static const char matrix_mul_compute_shader[] = SHADER_VERSION_STRING S(
+layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
+
+uniform uint m;
+uniform uint n;
+uniform uint l;
+uniform uint x0;
+uniform uint y0;
+
+layout(std430, binding = 0) buffer ssbo_A { float A[]; };
+layout(std430, binding = 1) buffer ssbo_B { float B[]; };
+layout(std430, binding = 2) buffer ssbo_R { float R[]; };
+
+const uint BLOCK_SIZE = gl_WorkGroupSize.x;
+
+shared float As[BLOCK_SIZE][BLOCK_SIZE];
+shared float Bs[BLOCK_SIZE][BLOCK_SIZE];
+
+void __memoryBarrierShared() {
+    memoryBarrierShared();
+    barrier();
+}
+
+void main() {
+    uint hA = m;
+    uint wA = n;
+    uint wB = l;
+
+    uint bx = gl_WorkGroupID.x;
+    uint by = gl_WorkGroupID.y;
+    uint tx = gl_LocalInvocationID.x;
+    uint ty = gl_LocalInvocationID.y;
+
+    uint gx = x0 + gl_GlobalInvocationID.x;
+    uint gy = y0 + gl_GlobalInvocationID.y;
+
+    uint aBegin = wA * (y0 + BLOCK_SIZE * by);
+    uint aEnd   = aBegin + wA - 1;
+    uint aStep  = BLOCK_SIZE;
+
+    uint bBegin = x0 + BLOCK_SIZE * bx;
+    uint bStep  = BLOCK_SIZE * wB;
+
+    float Rsub = 0.0f;
+
+    for(uint a = aBegin, b = bBegin, blkStart = 0;
+        a <= aEnd;
+        a += aStep, b += bStep, blkStart += BLOCK_SIZE) {
+        As[ty][tx] = (gy < hA && blkStart + tx < wA)
+            ? A[a + wA * ty + tx]
+            : 0.0f;
+
+        Bs[ty][tx] = (gx < wB && blkStart + ty < wA)
+            ? B[b + wB * ty + tx]
+            : 0.0f;
+
+        __memoryBarrierShared();
+
+        // #pragma unroll
+        for(uint k = 0; k < BLOCK_SIZE; k++) {
+            Rsub += As[ty][k] * Bs[k][tx];
+        }
+
+        __memoryBarrierShared();
+    }
+
+    if(gy < hA && gx < wB) {
+        uint c = wB * (y0 + BLOCK_SIZE * by) + (x0 + BLOCK_SIZE * bx);
+        R[c + wB * ty + tx] = Rsub;
+    }
+}
+);
+
+typedef struct {
+    uintptr_t *items;
+    size_t count;
+    size_t capacity;
+} MyArena;
+
+#define my_arena_bytes_count(a) (a)->count * sizeof(*(a)->items)
+#define my_arena_reset(a) (a)->count = 0
+
+static MyArena my_arena_init(const size_t bytes_count) {
+    MyArena arena = {0};
+    const size_t word_size = sizeof(*arena.items);
+    const size_t words_count = (bytes_count + word_size - 1) / word_size;
+    arena.items = (uintptr_t*)calloc(words_count, word_size);
+    ASSERT(arena.items);
+    arena.capacity = words_count;
+    return arena;
+}
+
+static void* my_arena_alloc(MyArena *const arena, const size_t bytes_count) {
+    const size_t word_size = sizeof(*arena->items);
+    const size_t words_count = (bytes_count + word_size - 1) / word_size;
+    ASSERT(arena->count + words_count <= arena->capacity);
+    void *const result = &arena->items[arena->count];
+    arena->count += words_count;
+    return result;
+} 
+
+static void mult_matrixes(void) {
+    MyArena arena = my_arena_init(1024 * 1024);
+
+    size_t rows_count = 40;
+    size_t cols_count = 30;
+
+    const 
+
+
+    GLuint buffers[3];
+    ASSERT_GL(glGenBuffers(3, buffers));
+    
+    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[0]));
+    ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, ));
+
+    free(arena.items);
+}
+
 int main(void) {
     GLFWwindow* const glfw_window = my_glfw_init();
     ImGuiContext *const ig_context = igCreateContext(NULL);
@@ -266,11 +385,16 @@ int main(void) {
     ig_io->IniFilename = NULL;
     ig_io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     ig_io->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+
     ig_io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     ImGuiStyle *const ig_style = igGetStyle();
     igStyleColorsDark(ig_style);
     ImGui_ImplGlfw_InitForOpenGL(glfw_window, true);
     ImGui_ImplOpenGL3_Init("#version 460");
+
+
+
+
     
     while(!glfwWindowShouldClose(glfw_window)) {
         glfwPollEvents();
