@@ -265,6 +265,7 @@ typedef struct {
 static MyArena my_arena_init(const size_t bytes_count) {
     MyArena arena = {.capacity = bytes_count, .items = (uint8_t*)malloc(bytes_count)};
     ASSERT(arena.items);
+    memset(arena.items, 0, bytes_count);
     return arena;
 }
 
@@ -281,6 +282,7 @@ typedef struct {
     GLfloat *items;
 } MyMat;
 
+#define MY_MAT_ASSERT_ENABLE
 #ifdef MY_MAT_ASSERT_ENABLE
     #define MY_MAT_ASSERT(expr) ASSERT((expr))
 #else
@@ -671,10 +673,10 @@ static void test_hstack(void) {
     my_mat_item(&first, 2, 2) = 3;
     my_mat_item(&first, 2, 3) = 3;
 
-    my_mat_item(&first, 2, 0) = 4;
-    my_mat_item(&first, 2, 1) = 4;
-    my_mat_item(&first, 2, 2) = 4;
-    my_mat_item(&first, 2, 3) = 4;
+    my_mat_item(&first, 3, 0) = 4;
+    my_mat_item(&first, 3, 1) = 4;
+    my_mat_item(&first, 3, 2) = 4;
+    my_mat_item(&first, 3, 3) = 4;
 
     my_mat_item(&second, 0, 0) = 5;
     my_mat_item(&second, 0, 1) = 5;
@@ -687,6 +689,10 @@ static void test_hstack(void) {
     my_mat_item(&second, 2, 0) = 7;
     my_mat_item(&second, 2, 1) = 7;
     my_mat_item(&second, 2, 2) = 7;
+
+    my_mat_item(&second, 3, 0) = 8;
+    my_mat_item(&second, 3, 1) = 8;
+    my_mat_item(&second, 3, 2) = 8;
 
     const MyMat result = my_mat_hstack(&arena, &first, &second);
     #define ASSERT_MAT_VALUE(row, col, expected_value) ASSERT(fabsf(my_mat_item(&result, (row), (col)) - (expected_value)) < 0.0000000001f)
@@ -705,8 +711,22 @@ static void test_hstack(void) {
         ASSERT_MAT_VALUE(1, 4, 6);
         ASSERT_MAT_VALUE(1, 5, 6);
         ASSERT_MAT_VALUE(1, 6, 6);
-        ASSERT_MAT_VALUE(1, 8, 6);
 
+        ASSERT_MAT_VALUE(2, 0, 3);
+        ASSERT_MAT_VALUE(2, 1, 3);
+        ASSERT_MAT_VALUE(2, 2, 3);
+        ASSERT_MAT_VALUE(2, 3, 3);
+        ASSERT_MAT_VALUE(2, 4, 7);
+        ASSERT_MAT_VALUE(2, 5, 7);
+        ASSERT_MAT_VALUE(2, 6, 7);
+
+        ASSERT_MAT_VALUE(3, 0, 4);
+        ASSERT_MAT_VALUE(3, 1, 4);
+        ASSERT_MAT_VALUE(3, 2, 4);
+        ASSERT_MAT_VALUE(3, 3, 4);
+        ASSERT_MAT_VALUE(3, 4, 8);
+        ASSERT_MAT_VALUE(3, 5, 8);
+        ASSERT_MAT_VALUE(3, 6, 8);
 
     #undef ASSERT_MAT_VALUE
 
