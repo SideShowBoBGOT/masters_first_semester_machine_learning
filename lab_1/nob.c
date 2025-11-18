@@ -88,7 +88,10 @@ int main(int argc, char** argv) {
     nob_da_append(&string_da, "polynomial_regression.c");
     nob_da_append(&string_da, BUILD_FOLDER STATIC_LIB_FULL_NAME);
     if(nob_needs_rebuild(BUILD_FOLDER "polynomial_regression", string_da.items, string_da.count)) {
-        nob_cmd_append(&cmd, "clang", "-o", BUILD_FOLDER "polynomial_regression", "polynomial_regression.c", "-L", BUILD_FOLDER, "-l" STATIC_LIB, "-O3");
+        nob_cmd_append(&cmd, "clang", "-o", BUILD_FOLDER "polynomial_regression", "polynomial_regression.c", "-L", BUILD_FOLDER, "-l" STATIC_LIB);
+        nob_cmd_append(&cmd, "-O3");
+        // nob_cmd_append(&cmd, "-O0");
+        // nob_cmd_append(&cmd, "-g3");
         nob_cmd_append(&cmd, "-fsanitize=address");
         nob_cmd_append(&cmd, "-std=c11");
         nob_cmd_append(&cmd, "-Werror");

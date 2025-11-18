@@ -196,33 +196,13 @@ __attribute__((noreturn)) static void my_glfw_error_callback(const int error, co
     abort();
 }
 
-static GLFWwindow* my_glfw_init(const bool visible) {
-    glfwSetErrorCallback(my_glfw_error_callback);
-    ASSERT(glfwInit());
-    glfwWindowHint(GLFW_VISIBLE, visible ? GLFW_TRUE : GLFW_FALSE);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
-    glfwWindowHint(GLFW_CONTEXT_CREATION_API, GLFW_EGL_CONTEXT_API);
-    glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
-    // glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-    GLFWwindow* const glfw_window = glfwCreateWindow(1280, 720, "demo", NULL, NULL);
-    ASSERT(glfw_window);
-    glfwMakeContextCurrent(glfw_window);
-    glfwSwapInterval(0);
-    ASSERT(gladLoadGLLoader((GLADloadproc)glfwGetProcAddress));
-    ASSERT(gladLoadEGLLoader((GLADloadproc)glfwGetProcAddress));
-    
+static void my_gl_egl_print_stats(EGLDisplay egl_display) {
     #define MY_PRINT_GL_GET_STRING(name) do {const GLubyte *value; ASSERT_GL(value = glGetString(name)); LOG(#name ": %s", value);} while(0)
         MY_PRINT_GL_GET_STRING(GL_RENDERER);
         MY_PRINT_GL_GET_STRING(GL_VENDOR);
         MY_PRINT_GL_GET_STRING(GL_VERSION);
         MY_PRINT_GL_GET_STRING(GL_SHADING_LANGUAGE_VERSION);
     #undef MY_PRINT_GL_GET_STRING
-
-    EGLDisplay egl_display = glfwGetEGLDisplay();
-    ASSERT(egl_display);
 
     #define MY_PRINT_EGL_QUERY_STRING(name) do {const char *value; ASSERT_EGL(value = eglQueryString(egl_display, name)); LOG(#name ": %s", value);} while(0)
         MY_PRINT_EGL_QUERY_STRING(EGL_CLIENT_APIS);
@@ -250,7 +230,29 @@ static GLFWwindow* my_glfw_init(const bool visible) {
         MY_PRINT_INTEGERV(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE);
         MY_PRINT_INTEGERV(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS);
     #undef MY_PRINT_INTEGERV
+}
 
+static GLFWwindow* my_glfw_init(const bool visible) {
+    glfwSetErrorCallback(my_glfw_error_callback);
+    ASSERT(glfwInit());
+    glfwWindowHint(GLFW_VISIBLE, visible ? GLFW_TRUE : GLFW_FALSE);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
+    glfwWindowHint(GLFW_CONTEXT_CREATION_API, GLFW_EGL_CONTEXT_API);
+    glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
+    // glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    GLFWwindow* const glfw_window = glfwCreateWindow(1280, 720, "demo", NULL, NULL);
+    ASSERT(glfw_window);
+    glfwMakeContextCurrent(glfw_window);
+    glfwSwapInterval(0);
+    ASSERT(gladLoadGLLoader((GLADloadproc)glfwGetProcAddress));
+    ASSERT(gladLoadEGLLoader((GLADloadproc)glfwGetProcAddress));
+    
+    EGLDisplay egl_display = glfwGetEGLDisplay();
+    ASSERT(egl_display != EGL_NO_DISPLAY);
+    my_gl_egl_print_stats(egl_display);
     return glfw_window;
 }
 
@@ -321,7 +323,6 @@ static MyMat my_mat_copy(MyArena arena[static 1], const MyMat src[static 1]) {
     return m; 
 }
 
-
 static void my_mat_mul(MyMat *const result, const MyMat *const first, const MyMat *const second) { ASSERT(first->cols == second->rows); ASSERT(first->rows == result->rows);
     ASSERT(first->cols == second->rows);
     ASSERT(first->rows == result->rows);
@@ -337,6 +338,10 @@ static void my_mat_mul(MyMat *const result, const MyMat *const first, const MyMa
     }
 }
 
+static void my_mat_transpose(void) {
+
+}
+
 #define SHADER_VERSION_STRING "#version 460\n"
 
 static const char mygl_matrix_mul_compute_shader[] = SHADER_VERSION_STRING S(
@@ -348,9 +353,9 @@ uniform uint l;
 uniform uint x0;
 uniform uint y0;
 
-layout(std430, binding = 0) buffer ssbo_A { float A[]; };
-layout(std430, binding = 1) buffer ssbo_B { float B[]; };
-layout(std430, binding = 2) buffer ssbo_R { float R[]; };
+layout(std430, binding = 0) readonly buffer ssbo_A { float A[]; };
+layout(std430, binding = 1) readonly buffer ssbo_B { float B[]; };
+layout(std430, binding = 2) writeonly buffer ssbo_R { float R[]; };
 
 const uint BLOCK_SIZE = gl_WorkGroupSize.x;
 
@@ -418,14 +423,27 @@ typedef struct {
     GLuint ssb;
 } MyGLMat;
 
-static inline GLint mygl_get_uniform_location(const GLuint shader_program, const char uniform_location_name[]) {
+static inline GLint my_gl_get_uniform_location(const GLuint shader_program, const char uniform_location_name[]) {
     GLint value;
     ASSERT_GL(value = glGetUniformLocation(shader_program, uniform_location_name));
     ASSERT(value != -1);
     return value;
 }
 
-static void mygl_mul(GLuint shader_program, const MyGLMat *const first, const MyGLMat *const second, const MyGLMat *const result) {
+static MyGLMat mygl_mat_buffer_data(const MyMat mat[static 1], const GLenum usage) {
+    MyGLMat gl_mat = {.rows = (GLuint)mat->rows, .cols = (GLuint)mat->cols};
+    ASSERT_GL(glGenBuffers(1, &gl_mat.ssb));
+    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, gl_mat.ssb));
+        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(mat), mat->items, usage));
+    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
+    return gl_mat;
+}
+
+// static MyGLMat my_gl_mat_mul_result_alloc(const MyGLMat first[static 1], const MyGLMat second[static 1]) {
+//     ASSERT(first->cols == second->rows);
+// }
+
+static void my_gl_dispatch_compute_mat_mul(const GLuint shader_program, const MyGLMat first[static 1], const MyGLMat second[static 1], const MyGLMat result[static 1]) {
     ASSERT(first->cols == second->rows);
     ASSERT(first->rows == result->rows);
     ASSERT(second->cols == result->cols);
@@ -448,16 +466,16 @@ static void mygl_mul(GLuint shader_program, const MyGLMat *const first, const My
         const GLuint nelem_x = wsize[0] * gsize[0];
         const GLuint nelem_y = wsize[1] * gsize[1];
 
-        ASSERT_GL(glUniform1ui(mygl_get_uniform_location(shader_program, "m"), first->rows));
-        ASSERT_GL(glUniform1ui(mygl_get_uniform_location(shader_program, "n"), first->cols));
-        ASSERT_GL(glUniform1ui(mygl_get_uniform_location(shader_program, "l"), second->cols));
+        ASSERT_GL(glUniform1ui(my_gl_get_uniform_location(shader_program, "m"), first->rows));
+        ASSERT_GL(glUniform1ui(my_gl_get_uniform_location(shader_program, "n"), first->cols));
+        ASSERT_GL(glUniform1ui(my_gl_get_uniform_location(shader_program, "l"), second->cols));
 
         for(GLuint yi = 0; yi < gcnt_y; yi++) {
             GLuint y0 = nelem_y * yi;
             for(GLuint xi = 0; xi < gcnt_x; xi++) {
                 GLuint x0 = nelem_x * xi;
-                ASSERT_GL(glUniform1ui(mygl_get_uniform_location(shader_program, "x0"), x0));
-                ASSERT_GL(glUniform1ui(mygl_get_uniform_location(shader_program, "y0"), y0));
+                ASSERT_GL(glUniform1ui(my_gl_get_uniform_location(shader_program, "x0"), x0));
+                ASSERT_GL(glUniform1ui(my_gl_get_uniform_location(shader_program, "y0"), y0));
                 ASSERT_GL(glDispatchCompute(gsize[0], gsize[1], 1));
             }
         }
@@ -531,8 +549,67 @@ static void my_mat_polynomial_features_standard_scale(MyMat mat[static 1]) {
     }
 }
 
+typedef struct {
+    EGLDisplay eglDisplay;
+    EGLContext eglContext;
+    EGLSurface eglSurface;
+} MyEGLData;
+
+static void my_egl_deinit(MyEGLData data[static 1]) {
+    ASSERT(eglMakeCurrent(data->eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));
+    ASSERT(eglDestroyContext(data->eglDisplay, data->eglContext));
+    ASSERT(eglDestroySurface(data->eglDisplay, data->eglSurface));
+    ASSERT(eglTerminate(data->eglDisplay));
+}
+
+static MyEGLData my_egl_init(void) {
+    EGLDisplay egl_display;
+    EGLConfig egl_config;
+    EGLContext egl_context;
+    EGLSurface egl_surface;
+
+    egl_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    ASSERT(egl_display != EGL_NO_DISPLAY);
+    EGLint major, minor;
+    ASSERT(eglInitialize(egl_display, &major, &minor) == EGL_TRUE);
+    
+    const EGLint configAttribs[] = {
+        EGL_SURFACE_TYPE,    EGL_PBUFFER_BIT,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+        EGL_NONE
+    };
+    EGLint numConfigs;
+    ASSERT(eglChooseConfig(egl_display, configAttribs, &egl_config, 1, &numConfigs) == EGL_TRUE);
+    ASSERT(numConfigs > 0);
+    const EGLint pbufferAttribs[] = {
+        EGL_WIDTH, 1920,
+        EGL_HEIGHT, 1080,
+        EGL_NONE
+    };
+    egl_surface = eglCreatePbufferSurface(egl_display, egl_config, pbufferAttribs);
+    ASSERT(egl_surface != EGL_NO_SURFACE);
+    const EGLint contextAttribs[] = {
+        EGL_CONTEXT_MAJOR_VERSION, 4,
+        EGL_CONTEXT_MINOR_VERSION, 3,
+        EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+        EGL_NONE
+    };
+    ASSERT(eglBindAPI(EGL_OPENGL_API) == EGL_TRUE);
+    egl_context = eglCreateContext(egl_display, egl_config, EGL_NO_CONTEXT, contextAttribs);
+    ASSERT(egl_context != EGL_NO_CONTEXT);
+    ASSERT(eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context) == EGL_TRUE);
+
+    ASSERT(gladLoadGLLoader((GLADloadproc)eglGetProcAddress));
+    ASSERT(gladLoadEGLLoader((GLADloadproc)eglGetProcAddress));
+
+    my_gl_egl_print_stats(egl_display);
+
+    return (MyEGLData){.eglDisplay = egl_display, .eglContext = egl_context, .eglSurface = egl_surface};
+}
+
 static void my_polynomial_train(void) {
-    GLFWwindow* const glfw_window = my_glfw_init(false);
+    MyEGLData egl_data = my_egl_init();
+    // GLFWwindow* const glfw_window = my_glfw_init(false);
     
     MyMat x_train = {.rows = 20210, .cols = 167};
     MyMat y_train = {.rows = 20210, .cols = 1};
@@ -552,14 +629,38 @@ static void my_polynomial_train(void) {
         LOCAL_MACRO(y_test);
     #undef LOCAL_MACRO
 
-    MyArena arena_polynomial_features = my_arena_init(1024 * 1024 * 110);
-    MyMat polynomial_features = my_polynomial_features_create(&arena_polynomial_features, &x_train, 8);
+    MyArena fit_arena = my_arena_init(1024 * 1024 * 300);
+    MyMat polynomial_features = my_polynomial_features_create(&fit_arena, &x_train, 4);
     LOG("size: %lu", my_mat_bytes_count(&polynomial_features));
     my_mat_polynomial_features_standard_scale(&polynomial_features);
+    MyMat ones = my_mat_alloc(&fit_arena, polynomial_features.rows, 1); 
+    my_mat_foreach(el, &ones) {
+        *el = 1.f;
+    }
+    MyMat xb = my_mat_hstack(&fit_arena, &ones, &polynomial_features);
 
-    free(arena_polynomial_features.items);
+    const MyGLMat gl_xb = mygl_mat_buffer_data(&xb, GL_DYNAMIC_DRAW);
+    const MyGLMat gl_weights = mygl_mat_buffer_data(&(MyMat){.rows = xb.cols, .cols = 1}, GL_DYNAMIC_COPY);
+    {
+        ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, gl_weights.ssb));
+            const GLfloat value = 0.f;
+            ASSERT_GL(glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32F, GL_RED, GL_FLOAT, &value));
+        ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
+    }
+    GLuint shader_program_mul_mat, compute_shader_mul_mat;
+    mygl_create_compute_shader_program(&shader_program_mul_mat, &compute_shader_mul_mat, mygl_matrix_mul_compute_shader);
+
+    MyGLMat predictions = mygl_mat_buffer_data(&(MyMat){.rows = gl_xb.rows, .cols = gl_weights.cols}, GL_DYNAMIC_COPY);
+
+    my_range_for_zero(size_t, i, 100) {
+        my_gl_dispatch_compute_mat_mul(shader_program_mul_mat, &gl_xb, &gl_weights, &predictions);
+        ASSERT_GL(glFinish());
+    }
+
+    free(fit_arena.items);
     free(arena.items);
-    glfwTerminate();
+    // glfwTerminate();
+    my_egl_deinit(&egl_data);
 }
 
 static void window_demo(void) {
@@ -641,8 +742,8 @@ static void test_matrix_multiplication(void) {
     my_glfw_init(false);
     MyArena arena = my_arena_init(1024 * 1024 * 500);
 
-    MyMat first_mat = my_mat_alloc(&arena, 1713, 1929);
-    MyMat second_mat = my_mat_alloc(&arena, first_mat.cols, first_mat.rows);
+    MyMat first_mat = my_mat_alloc(&arena, 20000, 167);
+    MyMat second_mat = my_mat_alloc(&arena, first_mat.cols, 1);
     MyMat third_mat = my_mat_alloc(&arena, first_mat.rows, second_mat.cols);
     my_mat_foreach(el, &first_mat) {
         *el = rand() % 100;
@@ -680,7 +781,7 @@ static void test_matrix_multiplication(void) {
     mygl_create_compute_shader_program(&shader_program, &compute_shader, mygl_matrix_mul_compute_shader);
 
     clock_t start = clock();
-        mygl_mul(shader_program, &first_mat_gl, &second_mat_gl, &third_mat_gl);
+        my_gl_dispatch_compute_mat_mul(shader_program, &first_mat_gl, &second_mat_gl, &third_mat_gl);
     clock_t end = clock();
     const double opengl_elapsed_time = (((double)(end - start)) / CLOCKS_PER_SEC) * 1000;
     LOG("opengl_elapsed_time ms: %lf", opengl_elapsed_time);
@@ -791,8 +892,8 @@ static void test_hstack(void) {
     free(arena.items);
 }
 static void test_all(void) {
-    // test_matrix_multiplication();
-    test_hstack();
+    test_matrix_multiplication();
+    // test_hstack();
 }
 
 #define my_shift(xs, xs_sz) (ASSERT((xs_sz) > 0), (xs_sz)--, *(xs)++)
