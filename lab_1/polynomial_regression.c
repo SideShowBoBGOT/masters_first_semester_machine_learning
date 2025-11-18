@@ -315,6 +315,12 @@ static MyMat my_mat_hstack(MyArena arena[static 1], const MyMat first[static 1],
     return result;
 }
 
+static MyMat my_mat_copy(MyArena arena[static 1], const MyMat src[static 1]) {
+    MyMat m = my_mat_alloc(arena, src->rows, src->cols);
+    memcpy(m.items, src->items, my_mat_bytes_count(src));
+    return m; 
+}
+
 
 static void my_mat_mul(MyMat *const result, const MyMat *const first, const MyMat *const second) { ASSERT(first->cols == second->rows); ASSERT(first->rows == result->rows);
     ASSERT(first->cols == second->rows);
@@ -476,8 +482,17 @@ static void my_read_bin_data_to_mat(MyMat *const mat, MyArena *const arena, cons
     ASSERT_NOT_MINUS_ONE(close(fd));
 }
 
-static void my_polynomial_features_create(void) {
-
+static MyMat my_polynomial_features_create(MyArena arena[static 1], const MyMat features[static 1], const size_t degree) {
+    ASSERT(degree > 0);
+    MyMat polynomial_features = my_mat_alloc(arena, features->rows, features->cols * degree);
+    my_range_for_zero(size_t, row, features->rows) {
+        for(size_t deg = 1, base_col = 0; deg < degree; deg++, base_col += features->cols) {
+            my_range_for_zero(size_t, col, features->cols) {
+                my_mat_item(&polynomial_features, row, base_col + col) = powf(my_mat_item(features, row, col), (float)deg);
+            }
+        }
+    }
+    return polynomial_features; 
 }
 
 static void my_polynomial_train(void) {
@@ -488,22 +503,27 @@ static void my_polynomial_train(void) {
     MyMat x_test = {.rows = 1053, .cols = 167};
     MyMat y_test = {.rows = 1053, .cols = 1};
 
-    MyArena my_arena = my_arena_init(
+    MyArena arena = my_arena_init(
         my_mat_bytes_count(&x_train)
         + my_mat_bytes_count(&y_train)
         + my_mat_bytes_count(&x_test)
         + my_mat_bytes_count(&y_test)
     );
-    #define LOCAL_MACRO(mat) my_read_bin_data_to_mat(&mat, &my_arena, "data/" #mat ".bin")
+    #define LOCAL_MACRO(mat) my_read_bin_data_to_mat(&mat, &arena, "data/" #mat ".bin")
         LOCAL_MACRO(x_train);
         LOCAL_MACRO(y_train);
         LOCAL_MACRO(x_test);
         LOCAL_MACRO(y_test);
     #undef LOCAL_MACRO
 
+    MyArena arena_polynomial_features = my_arena_init(1024 * 1024 * 110);
+    MyMat polynomial_features = my_polynomial_features_create(&arena_polynomial_features, &x_train, 8);
+    LOG("size: %lu", my_mat_bytes_count(&polynomial_features));
 
 
-    free(my_arena.items);
+
+    free(arena_polynomial_features.items);
+    free(arena.items);
     glfwTerminate();
 }
 
