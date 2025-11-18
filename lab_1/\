@@ -482,53 +482,33 @@ static void my_read_bin_data_to_mat(MyMat *const mat, MyArena *const arena, cons
     ASSERT_NOT_MINUS_ONE(close(fd));
 }
 
-static inline float my_powf(const float value, const size_t degree) {
-    double res = (double)value;
-    for(size_t i = 1; i < degree; ++i) {
-        res *= (double)value;
-    }
-    return (float)res;
-}
-static inline double my_pow(const double value, const size_t degree) {
-    double res = value;
-    for(size_t i = 1; i < degree; ++i) {
-        res *= value;
-    }
-    return res;
-}
-
 static MyMat my_polynomial_features_create(MyArena arena[static 1], const MyMat features[static 1], const size_t degree) {
     ASSERT(degree > 0);
     MyMat polynomial_features = my_mat_alloc(arena, features->rows, features->cols * degree);
     my_range_for_zero(size_t, row, features->rows) {
         for(size_t deg = 1, base_col = 0; deg < degree; deg++, base_col += features->cols) {
             my_range_for_zero(size_t, col, features->cols) {
-                my_mat_item(&polynomial_features, row, base_col + col) = my_powf(my_mat_item(features, row, col), deg);
+                my_mat_item(&polynomial_features, row, base_col + col) = powf(my_mat_item(features, row, col), (float)deg);
             }
         }
     }
     return polynomial_features; 
 }
 
-static void my_mat_polynomial_features_standard_scale(MyMat mat[static 1]) {
+static void my_mat_standard_scale(MyArena arena[static 1], MyMat mat[static 1]) {
+    double* const means = (double*)my_arena_alloc(arena, mat->cols);
     my_range_for_zero(size_t, col, mat->cols) {
         double mean = 0.0;
         my_range_for_zero(size_t, row, mat->rows) {
-            mean += (double)my_mat_item(mat, row, col);
+            mean += my_mat_item(mat, row, col);
         }
         mean /= (double)mat->rows;
-
         double std = 0.0;
         my_range_for_zero(size_t, row, mat->rows) {
-            std += my_pow((double)my_mat_item(mat, row, col) - mean, 2);
-        }
-        std /= (double)mat->rows;
-        std = sqrt(std);
-
-        my_range_for_zero(size_t, row, mat->rows) {
-            my_mat_item(mat, row, col) = (GLfloat)(((double)my_mat_item(mat, row, col) - mean) / std);
+            mean += my_mat_item(mat, row, col);
         }
     }
+
 }
 
 static void my_polynomial_train(void) {
@@ -555,7 +535,8 @@ static void my_polynomial_train(void) {
     MyArena arena_polynomial_features = my_arena_init(1024 * 1024 * 110);
     MyMat polynomial_features = my_polynomial_features_create(&arena_polynomial_features, &x_train, 8);
     LOG("size: %lu", my_mat_bytes_count(&polynomial_features));
-    my_mat_polynomial_features_standard_scale(&polynomial_features);
+
+
 
     free(arena_polynomial_features.items);
     free(arena.items);
