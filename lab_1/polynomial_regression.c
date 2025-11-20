@@ -742,7 +742,7 @@ static void test_matrix_multiplication(void) {
     my_glfw_init(false);
     MyArena arena = my_arena_init(1024 * 1024 * 500);
 
-    MyMat first_mat = my_mat_alloc(&arena, 20000, 167);
+    MyMat first_mat = my_mat_alloc(&arena, 10000, 10000);
     MyMat second_mat = my_mat_alloc(&arena, first_mat.cols, 1);
     MyMat third_mat = my_mat_alloc(&arena, first_mat.rows, second_mat.cols);
     my_mat_foreach(el, &first_mat) {

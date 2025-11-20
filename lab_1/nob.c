@@ -92,7 +92,7 @@ int main(int argc, char** argv) {
         nob_cmd_append(&cmd, "-O3");
         // nob_cmd_append(&cmd, "-O0");
         // nob_cmd_append(&cmd, "-g3");
-        nob_cmd_append(&cmd, "-fsanitize=address");
+        // nob_cmd_append(&cmd, "-fsanitize=address");
         nob_cmd_append(&cmd, "-std=c11");
         nob_cmd_append(&cmd, "-Werror");
         nob_cmd_append(&cmd, "-Weverything");
