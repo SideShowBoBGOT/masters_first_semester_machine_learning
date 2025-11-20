@@ -56,22 +56,6 @@ int main(int argc, char** argv) {
         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "glad_egl.o", "thirdparty/glad/glad_egl.c", COMPILATION_ARGS);
     #undef COMPILATION_ARGS
 
-    #define COMPILATION_ARGS "-c", "-O3", "-fno-exceptions", "-fno-rtti", "-std=c++11", "-DIMGUI_IMPL_API=extern \"C\""
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "cimgui.o", "thirdparty/cimgui/cimgui.cpp", COMPILATION_ARGS);
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "cimgui_impl.o", "thirdparty/cimgui/cimgui_impl.cpp", COMPILATION_ARGS);
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "imgui_widgets.o", "thirdparty/cimgui/imgui/imgui_widgets.cpp", COMPILATION_ARGS);
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "imgui_tables.o", "thirdparty/cimgui/imgui/imgui_tables.cpp", COMPILATION_ARGS);
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "imgui_draw.o", "thirdparty/cimgui/imgui/imgui_draw.cpp", COMPILATION_ARGS);
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "imgui_demo.o", "thirdparty/cimgui/imgui/imgui_demo.cpp", COMPILATION_ARGS);
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "imgui.o", "thirdparty/cimgui/imgui/imgui.cpp", COMPILATION_ARGS);
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "imgui_impl_glfw.o", "thirdparty/cimgui/imgui/imgui_impl_glfw.cpp", COMPILATION_ARGS);
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "imgui_impl_opengl3.o", "thirdparty/cimgui/imgui/imgui_impl_opengl3.cpp", COMPILATION_ARGS);
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "cimplot.o", "thirdparty/cimplot/cimplot.cpp", COMPILATION_ARGS);
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "implot.o", "thirdparty/cimplot/implot/implot.cpp", COMPILATION_ARGS);
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "implot_demo.o", "thirdparty/cimplot/implot/implot_demo.cpp", COMPILATION_ARGS);
-         my_nob_comp_if_needs(&string_da, BUILD_FOLDER "implot_items.o", "thirdparty/cimplot/implot/implot_items.cpp", COMPILATION_ARGS);
-    #undef COMPILATION_ARGS
-
     #define STATIC_LIB "im_and_glad"
     #define STATIC_LIB_FULL_NAME "lib" STATIC_LIB ".a"
 
@@ -93,6 +77,12 @@ int main(int argc, char** argv) {
         // nob_cmd_append(&cmd, "-O0");
         // nob_cmd_append(&cmd, "-g3");
         // nob_cmd_append(&cmd, "-fsanitize=address");
+        nob_cmd_append(&cmd, "-Wno-unknown-warning-option");
+        nob_cmd_append(&cmd, "-Wno-c23-extensions");
+        nob_cmd_append(&cmd, "-std=c11");
+        nob_cmd_append(&cmd, "-Werror");
+        nob_cmd_append(&cmd, "-Weverything");
+        nob_cmd_append(&cmd, "-Wno-disabled-macro-expansion");
         nob_cmd_append(&cmd, "-std=c11");
         nob_cmd_append(&cmd, "-Werror");
         nob_cmd_append(&cmd, "-Weverything");

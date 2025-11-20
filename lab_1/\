@@ -16,6 +16,17 @@
 #define EGL_EGLEXT_PROTOTYPES
 #include <EGL/eglext.h>
 
+#define GLFW_EXPOSE_NATIVE_EGL
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
+
+// #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS
+// #define CIMGUI_USE_OPENGL3
+// #define CIMGUI_USE_GLFW
+// #include "thirdparty/cimgui/cimgui.h"
+// #include "thirdparty/cimplot/cimplot.h"
+// #include "thirdparty/cimgui/cimgui_impl.h"
+
 #define ASSERT(expr, ...) ((expr) ? (void)0 : (fprintf(stderr, "%s:%d: %s: Assertion `%s' failed", __FILE__, __LINE__, __FUNCTION__, #expr) __VA_OPT__(,) __VA_OPT__(fprintf(stderr, " explanation: " __VA_ARGS__)), fprintf(stderr, "\n"), abort()))
 #define ASSERT_NOT_MINUS_ONE(expr, ...) ASSERT((expr) != -1 __VA_OPT__(,) __VA_ARGS__)
 
@@ -128,6 +139,35 @@ static GLuint mygl_create_compile_shader(const GLenum shader_type, const char *c
     return shader_id;
 }
 
+static void mygl_create_shader_program(
+    GLuint *const shader_program,
+    GLuint *const shader_vertex,
+    GLuint *const shader_fragment,
+    const char *const vertex_shader_code,
+    const char *const fragment_shader_code
+) {
+    *shader_vertex = mygl_create_compile_shader(GL_VERTEX_SHADER, vertex_shader_code);
+    *shader_fragment = mygl_create_compile_shader(GL_FRAGMENT_SHADER, fragment_shader_code);
+
+    *shader_program = glCreateProgram();
+    ASSERT(*shader_program);
+
+    ASSERT_GL(glAttachShader(*shader_program, *shader_vertex));
+    ASSERT_GL(glAttachShader(*shader_program, *shader_fragment));
+    {
+        ASSERT_GL(glLinkProgram(*shader_program));
+        GLint status;
+        ASSERT_GL(glGetProgramiv(*shader_program, GL_LINK_STATUS, &status));
+        ASSERT(status == GL_TRUE);
+    }
+    {
+        ASSERT_GL(glValidateProgram(*shader_program));
+        GLint status;
+        ASSERT_GL(glGetProgramiv(*shader_program, GL_VALIDATE_STATUS, &status));
+        ASSERT(status == GL_TRUE);
+    }
+}
+
 static void mygl_create_compute_shader_program(
     GLuint *const shader_program,
     GLuint *const shader_compute,
@@ -152,21 +192,26 @@ static void mygl_create_compute_shader_program(
     }
 }
 
-static void my_gl_egl_print_stats(EGLDisplay egl_display) {
-    #define MY_PRINT_EGL_QUERY_STRING(name) do {const char *value; ASSERT_EGL(value = eglQueryString(egl_display, name)); LOG(#name ": %s", value);} while(0)
-        MY_PRINT_EGL_QUERY_STRING(EGL_CLIENT_APIS);
-        MY_PRINT_EGL_QUERY_STRING(EGL_EXTENSIONS);
-        MY_PRINT_EGL_QUERY_STRING(EGL_VENDOR);
-        MY_PRINT_EGL_QUERY_STRING(EGL_VERSION);
-    #undef MY_PRINT_EGL_QUERY_STRING
+__attribute__((noreturn)) static void my_glfw_error_callback(const int error, const char* const description) {
+    LOG("GLFW Error %d: %s", error, description);
+    abort();
+}
 
+static void my_gl_egl_print_stats(EGLDisplay egl_display) {
     #define MY_PRINT_GL_GET_STRING(name) do {const GLubyte *value; ASSERT_GL(value = glGetString(name)); LOG(#name ": %s", value);} while(0)
         MY_PRINT_GL_GET_STRING(GL_RENDERER);
         MY_PRINT_GL_GET_STRING(GL_VENDOR);
         MY_PRINT_GL_GET_STRING(GL_VERSION);
         MY_PRINT_GL_GET_STRING(GL_SHADING_LANGUAGE_VERSION);
     #undef MY_PRINT_GL_GET_STRING
-     
+
+    #define MY_PRINT_EGL_QUERY_STRING(name) do {const char *value; ASSERT_EGL(value = eglQueryString(egl_display, name)); LOG(#name ": %s", value);} while(0)
+        MY_PRINT_EGL_QUERY_STRING(EGL_CLIENT_APIS);
+        MY_PRINT_EGL_QUERY_STRING(EGL_EXTENSIONS);
+        MY_PRINT_EGL_QUERY_STRING(EGL_VENDOR);
+        MY_PRINT_EGL_QUERY_STRING(EGL_VERSION);
+    #undef MY_PRINT_EGL_QUERY_STRING
+ 
     #define MY_PRINT_INTEGERI_V(name, col) do {GLint value; ASSERT_GL(glGetIntegeri_v(name, col, &value)); LOG(#name " " #col ": %d", value);} while(0)
         MY_PRINT_INTEGERI_V(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 0);
         MY_PRINT_INTEGERI_V(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 1);
@@ -186,6 +231,30 @@ static void my_gl_egl_print_stats(EGLDisplay egl_display) {
         MY_PRINT_INTEGERV(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE);
         MY_PRINT_INTEGERV(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS);
     #undef MY_PRINT_INTEGERV
+}
+
+static GLFWwindow* my_glfw_init(const bool visible) {
+    glfwSetErrorCallback(my_glfw_error_callback);
+    ASSERT(glfwInit());
+    glfwWindowHint(GLFW_VISIBLE, visible ? GLFW_TRUE : GLFW_FALSE);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
+    glfwWindowHint(GLFW_CONTEXT_CREATION_API, GLFW_EGL_CONTEXT_API);
+    glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
+    // glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    GLFWwindow* const glfw_window = glfwCreateWindow(1280, 720, "demo", NULL, NULL);
+    ASSERT(glfw_window);
+    glfwMakeContextCurrent(glfw_window);
+    glfwSwapInterval(0);
+    ASSERT(gladLoadGLLoader((GLADloadproc)glfwGetProcAddress));
+    ASSERT(gladLoadEGLLoader((GLADloadproc)glfwGetProcAddress));
+    
+    EGLDisplay egl_display = glfwGetEGLDisplay();
+    ASSERT(egl_display != EGL_NO_DISPLAY);
+    my_gl_egl_print_stats(egl_display);
+    return glfw_window;
 }
 
 typedef struct {
@@ -239,6 +308,22 @@ static MyMat my_mat_alloc(MyArena arena[static 1], const size_t rows, const size
     return m;
 }
 
+static MyMat my_mat_hstack(MyArena arena[static 1], const MyMat first[static 1], const MyMat second[static 1]) {
+    ASSERT(first->rows == second->rows);
+    MyMat result = my_mat_alloc(arena, first->rows, first->cols + second->cols);
+    my_range_for_zero(size_t, row, first->rows) {
+        memcpy(&my_mat_row(&result, row), &my_mat_row(first, row), my_mat_row_bytes_count(first));
+        memcpy(&my_mat_item(&result, row, first->cols), &my_mat_row(second, row), my_mat_row_bytes_count(second));
+    }
+    return result;
+}
+
+static MyMat my_mat_copy(MyArena arena[static 1], const MyMat src[static 1]) {
+    MyMat m = my_mat_alloc(arena, src->rows, src->cols);
+    memcpy(m.items, src->items, my_mat_bytes_count(src));
+    return m; 
+}
+
 static void my_mat_mul(MyMat *const result, const MyMat *const first, const MyMat *const second) { ASSERT(first->cols == second->rows); ASSERT(first->rows == result->rows);
     ASSERT(first->cols == second->rows);
     ASSERT(first->rows == result->rows);
@@ -254,10 +339,14 @@ static void my_mat_mul(MyMat *const result, const MyMat *const first, const MyMa
     }
 }
 
-#define SHADER_VERSION_STRING "#version 320 es\n"
+static void my_mat_transpose(void) {
+
+}
+
+#define SHADER_VERSION_STRING "#version 330 es\n"
 
 static const char mygl_matrix_mul_compute_shader[] = SHADER_VERSION_STRING S(
-layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 uniform uint m;
 uniform uint n;
@@ -274,7 +363,7 @@ const uint BLOCK_SIZE = gl_WorkGroupSize.x;
 shared float As[BLOCK_SIZE][BLOCK_SIZE];
 shared float Bs[BLOCK_SIZE][BLOCK_SIZE];
 
-void _memoryBarrierShared() {
+void __memoryBarrierShared() {
     memoryBarrierShared();
     barrier();
 }
@@ -293,7 +382,7 @@ void main() {
     uint gy = y0 + gl_GlobalInvocationID.y;
 
     uint aBegin = wA * (y0 + BLOCK_SIZE * by);
-    uint aEnd   = aBegin + wA - 1u;
+    uint aEnd   = aBegin + wA - 1;
     uint aStep  = BLOCK_SIZE;
 
     uint bBegin = x0 + BLOCK_SIZE * bx;
@@ -301,7 +390,7 @@ void main() {
 
     float Rsub = 0.0f;
 
-    for(uint a = aBegin, b = bBegin, blkStart = 0u;
+    for(uint a = aBegin, b = bBegin, blkStart = 0;
         a <= aEnd;
         a += aStep, b += bStep, blkStart += BLOCK_SIZE) {
         As[ty][tx] = (gy < hA && blkStart + tx < wA)
@@ -312,13 +401,14 @@ void main() {
             ? B[b + wB * ty + tx]
             : 0.0f;
 
-        _memoryBarrierShared();
+        __memoryBarrierShared();
 
-        for(uint k = 0u; k < BLOCK_SIZE; k++) {
+        // #pragma unroll
+        for(uint k = 0; k < BLOCK_SIZE; k++) {
             Rsub += As[ty][k] * Bs[k][tx];
         }
 
-        _memoryBarrierShared();
+        __memoryBarrierShared();
     }
 
     if(gy < hA && gx < wB) {
@@ -341,6 +431,19 @@ static inline GLint my_gl_get_uniform_location(const GLuint shader_program, cons
     return value;
 }
 
+static MyGLMat mygl_mat_buffer_data(const MyMat mat[static 1], const GLenum usage) {
+    MyGLMat gl_mat = {.rows = (GLuint)mat->rows, .cols = (GLuint)mat->cols};
+    ASSERT_GL(glGenBuffers(1, &gl_mat.ssb));
+    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, gl_mat.ssb));
+        ASSERT_GL(glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)my_mat_bytes_count(mat), mat->items, usage));
+    ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
+    return gl_mat;
+}
+
+// static MyGLMat my_gl_mat_mul_result_alloc(const MyGLMat first[static 1], const MyGLMat second[static 1]) {
+//     ASSERT(first->cols == second->rows);
+// }
+
 static void my_gl_dispatch_compute_mat_mul(const GLuint shader_program, const MyGLMat first[static 1], const MyGLMat second[static 1], const MyGLMat result[static 1]) {
     ASSERT(first->cols == second->rows);
     ASSERT(first->rows == result->rows);
@@ -351,7 +454,7 @@ static void my_gl_dispatch_compute_mat_mul(const GLuint shader_program, const My
     ASSERT_GL(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, result->ssb));
     ASSERT_GL(glUseProgram(shader_program));
 
-        const GLuint BLOCK_SIZE = 32;
+        const GLuint BLOCK_SIZE = 16;
         const GLuint wsize[3] = {BLOCK_SIZE, BLOCK_SIZE, 1};
         const GLuint gsize[3] = {64, 64, 1};
         
@@ -384,6 +487,69 @@ static void my_gl_dispatch_compute_mat_mul(const GLuint shader_program, const My
     ASSERT_GL(glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0));
 }
 
+static void my_read_bin_data_to_mat(MyMat *const mat, MyArena *const arena, const char *const path) {
+    mat->items = (GLfloat*)my_arena_alloc(arena, my_mat_bytes_count(mat));
+    const int fd = open(path, O_RDONLY);
+    ASSERT_NOT_MINUS_ONE(fd);
+    struct stat stat;
+    ASSERT_NOT_MINUS_ONE(fstat(fd, &stat));
+    ASSERT((size_t)stat.st_size == my_mat_bytes_count(mat));
+    GLfloat *const data = (GLfloat*)mmap(NULL, my_mat_bytes_count(mat), PROT_READ, MAP_SHARED, fd, 0);
+    ASSERT(data != MAP_FAILED);
+    memcpy(mat->items, data, my_mat_bytes_count(mat));
+    ASSERT_NOT_MINUS_ONE(munmap(data, my_mat_bytes_count(mat)));
+    ASSERT_NOT_MINUS_ONE(close(fd));
+}
+
+static inline float my_powf(const float value, const size_t degree) {
+    double res = (double)value;
+    for(size_t i = 1; i < degree; ++i) {
+        res *= (double)value;
+    }
+    return (float)res;
+}
+static inline double my_pow(const double value, const size_t degree) {
+    double res = value;
+    for(size_t i = 1; i < degree; ++i) {
+        res *= value;
+    }
+    return res;
+}
+
+static MyMat my_polynomial_features_create(MyArena arena[static 1], const MyMat features[static 1], const size_t degree) {
+    ASSERT(degree > 0);
+    MyMat polynomial_features = my_mat_alloc(arena, features->rows, features->cols * degree);
+    my_range_for_zero(size_t, row, features->rows) {
+        for(size_t deg = 1, base_col = 0; deg < degree; deg++, base_col += features->cols) {
+            my_range_for_zero(size_t, col, features->cols) {
+                my_mat_item(&polynomial_features, row, base_col + col) = my_powf(my_mat_item(features, row, col), deg);
+            }
+        }
+    }
+    return polynomial_features; 
+}
+
+static void my_mat_polynomial_features_standard_scale(MyMat mat[static 1]) {
+    my_range_for_zero(size_t, col, mat->cols) {
+        double mean = 0.0;
+        my_range_for_zero(size_t, row, mat->rows) {
+            mean += (double)my_mat_item(mat, row, col);
+        }
+        mean /= (double)mat->rows;
+
+        double std = 0.0;
+        my_range_for_zero(size_t, row, mat->rows) {
+            std += my_pow((double)my_mat_item(mat, row, col) - mean, 2);
+        }
+        std /= (double)mat->rows;
+        std = sqrt(std);
+
+        my_range_for_zero(size_t, row, mat->rows) {
+            my_mat_item(mat, row, col) = (GLfloat)(((double)my_mat_item(mat, row, col) - mean) / std);
+        }
+    }
+}
+
 typedef struct {
     EGLDisplay eglDisplay;
     EGLContext eglContext;
@@ -407,8 +573,7 @@ static MyEGLData my_egl_init(void) {
     ASSERT(egl_display != EGL_NO_DISPLAY);
     EGLint major, minor;
     ASSERT(eglInitialize(egl_display, &major, &minor) == EGL_TRUE);
-    ASSERT(eglBindAPI(EGL_OPENGL_ES_API) == EGL_TRUE);
-
+    
     const EGLint configAttribs[] = {
         EGL_SURFACE_TYPE,    EGL_PBUFFER_BIT,
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
@@ -425,14 +590,17 @@ static MyEGLData my_egl_init(void) {
     egl_surface = eglCreatePbufferSurface(egl_display, egl_config, pbufferAttribs);
     ASSERT(egl_surface != EGL_NO_SURFACE);
     const EGLint contextAttribs[] = {
-        EGL_CONTEXT_CLIENT_VERSION, 3,
+        EGL_CONTEXT_MAJOR_VERSION, 3,
+        EGL_CONTEXT_MINOR_VERSION, 1,
+        EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
         EGL_NONE
     };
+    ASSERT(eglBindAPI(EGL_OPENGL_API) == EGL_TRUE);
     egl_context = eglCreateContext(egl_display, egl_config, EGL_NO_CONTEXT, contextAttribs);
     ASSERT(egl_context != EGL_NO_CONTEXT);
     ASSERT(eglMakeCurrent(egl_display, egl_surface, egl_surface, egl_context) == EGL_TRUE);
 
-    ASSERT(gladLoadGLES2Loader((GLADloadproc)eglGetProcAddress));
+    ASSERT(gladLoadGLLoader((GLADloadproc)eglGetProcAddress));
     ASSERT(gladLoadEGLLoader((GLADloadproc)eglGetProcAddress));
 
     my_gl_egl_print_stats(egl_display);
@@ -440,12 +608,68 @@ static MyEGLData my_egl_init(void) {
     return (MyEGLData){.eglDisplay = egl_display, .eglContext = egl_context, .eglSurface = egl_surface};
 }
 
+static void my_polynomial_train(void) {
+    MyEGLData egl_data = my_egl_init();
+    // GLFWwindow* const glfw_window = my_glfw_init(false);
+    
+    MyMat x_train = {.rows = 20210, .cols = 167};
+    MyMat y_train = {.rows = 20210, .cols = 1};
+    MyMat x_test = {.rows = 1053, .cols = 167};
+    MyMat y_test = {.rows = 1053, .cols = 1};
+
+    MyArena arena = my_arena_init(
+        my_mat_bytes_count(&x_train)
+        + my_mat_bytes_count(&y_train)
+        + my_mat_bytes_count(&x_test)
+        + my_mat_bytes_count(&y_test)
+    );
+    #define LOCAL_MACRO(mat) my_read_bin_data_to_mat(&mat, &arena, "data/" #mat ".bin")
+        LOCAL_MACRO(x_train);
+        LOCAL_MACRO(y_train);
+        LOCAL_MACRO(x_test);
+        LOCAL_MACRO(y_test);
+    #undef LOCAL_MACRO
+
+    MyArena fit_arena = my_arena_init(1024 * 1024 * 300);
+    MyMat polynomial_features = my_polynomial_features_create(&fit_arena, &x_train, 4);
+    LOG("size: %lu", my_mat_bytes_count(&polynomial_features));
+    my_mat_polynomial_features_standard_scale(&polynomial_features);
+    MyMat ones = my_mat_alloc(&fit_arena, polynomial_features.rows, 1); 
+    my_mat_foreach(el, &ones) {
+        *el = 1.f;
+    }
+    MyMat xb = my_mat_hstack(&fit_arena, &ones, &polynomial_features);
+
+    const MyGLMat gl_xb = mygl_mat_buffer_data(&xb, GL_DYNAMIC_DRAW);
+    const MyGLMat gl_weights = mygl_mat_buffer_data(&(MyMat){.rows = xb.cols, .cols = 1}, GL_DYNAMIC_COPY);
+    {
+        ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, gl_weights.ssb));
+            const GLfloat value = 0.f;
+            ASSERT_GL(glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32F, GL_RED, GL_FLOAT, &value));
+        ASSERT_GL(glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0));
+    }
+    GLuint shader_program_mul_mat, compute_shader_mul_mat;
+    mygl_create_compute_shader_program(&shader_program_mul_mat, &compute_shader_mul_mat, mygl_matrix_mul_compute_shader);
+
+    MyGLMat predictions = mygl_mat_buffer_data(&(MyMat){.rows = gl_xb.rows, .cols = gl_weights.cols}, GL_DYNAMIC_COPY);
+
+    my_range_for_zero(size_t, i, 100) {
+        my_gl_dispatch_compute_mat_mul(shader_program_mul_mat, &gl_xb, &gl_weights, &predictions);
+        ASSERT_GL(glFinish());
+    }
+
+    free(fit_arena.items);
+    free(arena.items);
+    // glfwTerminate();
+    my_egl_deinit(&egl_data);
+}
+
 static void test_matrix_multiplication(void) {
     MyEGLData egl_data = my_egl_init();
-    MyArena arena = my_arena_init(1024 * 1024 * 16);
+    MyArena arena = my_arena_init(1024 * 1024 * 500);
 
-    MyMat first_mat = my_mat_alloc(&arena, 1024, 1024);
-    MyMat second_mat = my_mat_alloc(&arena, first_mat.cols, first_mat.rows);
+    MyMat first_mat = my_mat_alloc(&arena, 10000, 10000);
+    MyMat second_mat = my_mat_alloc(&arena, first_mat.cols, 1);
     MyMat third_mat = my_mat_alloc(&arena, first_mat.rows, second_mat.cols);
     my_mat_foreach(el, &first_mat) {
         *el = rand() % 100;
@@ -484,7 +708,6 @@ static void test_matrix_multiplication(void) {
 
     clock_t start = clock();
         my_gl_dispatch_compute_mat_mul(shader_program, &first_mat_gl, &second_mat_gl, &third_mat_gl);
-        ASSERT_GL(glFinish());
     clock_t end = clock();
     const double opengl_elapsed_time = (((double)(end - start)) / CLOCKS_PER_SEC) * 1000;
     LOG("opengl_elapsed_time ms: %lf", opengl_elapsed_time);
@@ -499,6 +722,7 @@ static void test_matrix_multiplication(void) {
             GLfloat *data; 
             ASSERT_GL(data = (GLfloat*)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, (GLsizeiptr)my_mat_bytes_count(&third_mat), GL_MAP_READ_BIT));
             my_range_for_zero(size_t, i, my_mat_items_count(&third_mat)) {
+                // LOG("opengl: %lf, cpu: %lf", (double)data[i], (double)third_mat.items[i]);
                 ASSERT(fabsf(data[i] - third_mat.items[i]) < 0.0001f);
             }
             ASSERT_GL(glUnmapBuffer(GL_SHADER_STORAGE_BUFFER));
@@ -514,8 +738,88 @@ static void test_matrix_multiplication(void) {
     my_egl_deinit(&egl_data);
 }
 
+static void test_hstack(void) {
+    MyArena arena = my_arena_init(1024);
+    MyMat first = my_mat_alloc(&arena, 4, 4);
+    MyMat second = my_mat_alloc(&arena, 4, 3);
+
+    my_mat_item(&first, 0, 0) = 1;
+    my_mat_item(&first, 0, 1) = 1;
+    my_mat_item(&first, 0, 2) = 1;
+    my_mat_item(&first, 0, 3) = 1;
+
+    my_mat_item(&first, 1, 0) = 2;
+    my_mat_item(&first, 1, 1) = 2;
+    my_mat_item(&first, 1, 2) = 2;
+    my_mat_item(&first, 1, 3) = 2;
+
+    my_mat_item(&first, 2, 0) = 3;
+    my_mat_item(&first, 2, 1) = 3;
+    my_mat_item(&first, 2, 2) = 3;
+    my_mat_item(&first, 2, 3) = 3;
+
+    my_mat_item(&first, 3, 0) = 4;
+    my_mat_item(&first, 3, 1) = 4;
+    my_mat_item(&first, 3, 2) = 4;
+    my_mat_item(&first, 3, 3) = 4;
+
+    my_mat_item(&second, 0, 0) = 5;
+    my_mat_item(&second, 0, 1) = 5;
+    my_mat_item(&second, 0, 2) = 5;
+
+    my_mat_item(&second, 1, 0) = 6;
+    my_mat_item(&second, 1, 1) = 6;
+    my_mat_item(&second, 1, 2) = 6;
+
+    my_mat_item(&second, 2, 0) = 7;
+    my_mat_item(&second, 2, 1) = 7;
+    my_mat_item(&second, 2, 2) = 7;
+
+    my_mat_item(&second, 3, 0) = 8;
+    my_mat_item(&second, 3, 1) = 8;
+    my_mat_item(&second, 3, 2) = 8;
+
+    const MyMat result = my_mat_hstack(&arena, &first, &second);
+    #define ASSERT_MAT_VALUE(row, col, expected_value) ASSERT(fabsf(my_mat_item(&result, (row), (col)) - (expected_value)) < 0.0000000001f)
+        ASSERT_MAT_VALUE(0, 0, 1);
+        ASSERT_MAT_VALUE(0, 1, 1);
+        ASSERT_MAT_VALUE(0, 2, 1);
+        ASSERT_MAT_VALUE(0, 3, 1);
+        ASSERT_MAT_VALUE(0, 4, 5);
+        ASSERT_MAT_VALUE(0, 5, 5);
+        ASSERT_MAT_VALUE(0, 6, 5);
+
+        ASSERT_MAT_VALUE(1, 0, 2);
+        ASSERT_MAT_VALUE(1, 1, 2);
+        ASSERT_MAT_VALUE(1, 2, 2);
+        ASSERT_MAT_VALUE(1, 3, 2);
+        ASSERT_MAT_VALUE(1, 4, 6);
+        ASSERT_MAT_VALUE(1, 5, 6);
+        ASSERT_MAT_VALUE(1, 6, 6);
+
+        ASSERT_MAT_VALUE(2, 0, 3);
+        ASSERT_MAT_VALUE(2, 1, 3);
+        ASSERT_MAT_VALUE(2, 2, 3);
+        ASSERT_MAT_VALUE(2, 3, 3);
+        ASSERT_MAT_VALUE(2, 4, 7);
+        ASSERT_MAT_VALUE(2, 5, 7);
+        ASSERT_MAT_VALUE(2, 6, 7);
+
+        ASSERT_MAT_VALUE(3, 0, 4);
+        ASSERT_MAT_VALUE(3, 1, 4);
+        ASSERT_MAT_VALUE(3, 2, 4);
+        ASSERT_MAT_VALUE(3, 3, 4);
+        ASSERT_MAT_VALUE(3, 4, 8);
+        ASSERT_MAT_VALUE(3, 5, 8);
+        ASSERT_MAT_VALUE(3, 6, 8);
+
+    #undef ASSERT_MAT_VALUE
+
+    free(arena.items);
+}
 static void test_all(void) {
     test_matrix_multiplication();
+    // test_hstack();
 }
 
 #define my_shift(xs, xs_sz) (ASSERT((xs_sz) > 0), (xs_sz)--, *(xs)++)
@@ -523,6 +827,7 @@ static void test_all(void) {
 int main(int argc, const char* const* argv) {
     my_shift(argv, argc);
     if(argc == 0) {
+        my_polynomial_train();
     } else {
         ASSERT(argc == 1);
         const char* const arg = my_shift(argv, argc);
